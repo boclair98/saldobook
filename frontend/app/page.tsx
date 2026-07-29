@@ -96,6 +96,60 @@ type SyncIssue = {
 const categoryColors = ["#ef7b45", "#e9b949", "#2f8f68", "#5c7caa", "#a78b7a"];
 const money = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 const signOutUrl = "/api/auth/logout";
+const showcaseOverview: Overview = {
+  income: 4_500_000,
+  expense: 1_740_000,
+  remaining: 2_760_000,
+  categories: {
+    식비: 620_000,
+    주거: 480_000,
+    교통: 260_000,
+    쇼핑: 230_000,
+    여가: 150_000,
+  },
+  transactionCount: 6,
+  monthly: [
+    { month: "2026-02", income: 4_100_000, expense: 2_220_000 },
+    { month: "2026-03", income: 4_100_000, expense: 2_040_000 },
+    { month: "2026-04", income: 4_200_000, expense: 2_310_000 },
+    { month: "2026-05", income: 4_200_000, expense: 1_980_000 },
+    { month: "2026-06", income: 4_300_000, expense: 2_120_000 },
+    { month: "2026-07", income: 4_500_000, expense: 1_740_000 },
+  ],
+};
+const showcaseTransactions: Transaction[] = [
+  { id: "demo-1", merchant: "월급", category: "급여", amount: 4_500_000, type: "INCOME", transactedAt: "2026-07-25T09:00:00+09:00", source: "OPEN_BANKING" },
+  { id: "demo-2", merchant: "동네 마트", category: "식비", amount: 86_400, type: "EXPENSE", transactedAt: "2026-07-28T18:20:00+09:00", source: "OPEN_BANKING" },
+  { id: "demo-3", merchant: "주택 관리비", category: "주거", amount: 214_000, type: "EXPENSE", transactedAt: "2026-07-27T10:00:00+09:00", source: "OPEN_BANKING" },
+  { id: "demo-4", merchant: "대중교통", category: "교통", amount: 58_500, type: "EXPENSE", transactedAt: "2026-07-26T08:15:00+09:00", source: "OPEN_BANKING" },
+  { id: "demo-5", merchant: "온라인 서점", category: "쇼핑", amount: 32_000, type: "EXPENSE", transactedAt: "2026-07-24T21:10:00+09:00", source: "MANUAL" },
+  { id: "demo-6", merchant: "영화관", category: "여가", amount: 28_000, type: "EXPENSE", transactedAt: "2026-07-23T19:40:00+09:00", source: "MANUAL" },
+];
+const showcaseBanking: Banking = {
+  connected: true,
+  fullSyncConfigured: true,
+  testMode: true,
+  accounts: [
+    {
+      id: "demo-account-1",
+      institutionName: "샘플은행",
+      maskedNumber: "000-***-123456",
+      balance: 3_240_000,
+      availableBalance: 3_240_000,
+      productName: "생활비 통장",
+      lastSyncedAt: "2026-07-29T09:30:00+09:00",
+    },
+    {
+      id: "demo-account-2",
+      institutionName: "데모저축은행",
+      maskedNumber: "111-***-654321",
+      balance: 6_800_000,
+      availableBalance: 6_800_000,
+      productName: "목표 저축",
+      lastSyncedAt: "2026-07-29T09:30:00+09:00",
+    },
+  ],
+};
 
 async function responseMessage(response: Response, fallback: string) {
   try {
@@ -120,6 +174,7 @@ export default function HomePage() {
   const [saving, setSaving] = useState(false);
   const [syncIssues, setSyncIssues] = useState<SyncIssue[]>([]);
   const [bankingError, setBankingError] = useState("");
+  const [showcase, setShowcase] = useState(false);
 
   const loadPrivateData = useCallback(async () => {
     const [overviewResult, transactionResult, budgetResult, bankingResult] = await Promise.allSettled([
@@ -148,6 +203,17 @@ export default function HomePage() {
   useEffect(() => {
     let active = true;
     async function initialize() {
+      const localShowcase = ["localhost", "127.0.0.1"].includes(window.location.hostname)
+        && new URLSearchParams(window.location.search).get("showcase") === "readme";
+      if (localShowcase) {
+        setShowcase(true);
+        setAuth({ authenticated: true, name: "샘플 사용자", userKey: "README-DEMO" });
+        setOverview(showcaseOverview);
+        setTransactions(showcaseTransactions);
+        setBudget({ month: "2026-07", amount: 2_500_000 });
+        setBanking(showcaseBanking);
+        return;
+      }
       try {
         const response = await fetch("/api/auth/me", {
           credentials: "include",
@@ -465,12 +531,14 @@ export default function HomePage() {
 
         <section className="privacy-status">
           <LockKeyhole size={15} />
-          <span>현재 화면의 금액과 거래는 개인 ID <b>{auth.userKey}</b>에만 연결되어 있습니다.</span>
+          <span>{showcase
+            ? <>README용 데모 화면입니다. 표시된 금액과 계좌는 모두 샘플 데이터입니다.</>
+            : <>현재 화면의 금액과 거래는 개인 ID <b>{auth.userKey}</b>에만 연결되어 있습니다.</>}</span>
         </section>
 
         <section className="summary-grid" aria-label="개인 자산 요약">
           <article className="balance-card">
-            <div className="card-head"><span>이번 달 남은 돈</span><span>실제 저장 데이터</span></div>
+            <div className="card-head"><span>이번 달 남은 돈</span><span>{showcase ? "README 데모 데이터" : "실제 저장 데이터"}</span></div>
             <strong>{overview.remaining.toLocaleString("ko-KR")}<small>원</small></strong>
             <div className="balance-row">
               <span><i className="income-dot"><ArrowDownLeft size={13} /></i><em>수입</em><b>{money(overview.income)}</b></span>
@@ -593,7 +661,9 @@ export default function HomePage() {
             )}
           </article>
         </section>
-        <p className="disclaimer">가상 금융 데이터는 표시하지 않습니다. 계좌 데이터는 금융결제원 오픈뱅킹 운영 승인이 완료된 후에만 가져옵니다.</p>
+        <p className="disclaimer">{showcase
+          ? "이 미리보기의 이름, 금액, 계좌번호와 거래내역은 README 촬영용 샘플 데이터입니다."
+          : "가상 금융 데이터는 표시하지 않습니다. 계좌 데이터는 금융결제원 오픈뱅킹 운영 승인이 완료된 후에만 가져옵니다."}</p>
       </main>
 
       {modal && (
