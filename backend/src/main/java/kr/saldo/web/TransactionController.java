@@ -3,6 +3,8 @@ package kr.saldo.web;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import jakarta.servlet.http.HttpSession;
 import kr.saldo.domain.LedgerTransaction;
 import kr.saldo.repo.TransactionRepository;
@@ -64,10 +66,10 @@ public class TransactionController {
   }
 
   public record CreateTransaction(
-    @NotBlank String merchant,
-    @NotBlank String category,
+    @NotBlank @Size(max = 120) String merchant,
+    @NotBlank @Size(max = 40) String category,
     @Min(1) long amount,
-    @NotBlank String type,
+    @NotBlank @Pattern(regexp = "INCOME|EXPENSE") String type,
     Instant transactedAt
   ) {}
 }

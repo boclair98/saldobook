@@ -224,43 +224,54 @@ public class OpenBankingService {
 
   private int importTransactions(BankAccount account, String accessToken) {
     LocalDate today = LocalDate.now(KOREA);
-    URI uri = UriComponentsBuilder.fromUriString(apiBaseUrl + "/account/transaction_list/fin_num")
-      .queryParam("bank_tran_id", bankTranId())
-      .queryParam("fintech_use_num", account.getFintechUseNum())
-      .queryParam("inquiry_type", "A")
-      .queryParam("inquiry_base", "D")
-      .queryParam("from_date", today.minusDays(89).format(DateTimeFormatter.BASIC_ISO_DATE))
-      .queryParam("from_time", "000000")
-      .queryParam("to_date", today.format(DateTimeFormatter.BASIC_ISO_DATE))
-      .queryParam("to_time", "235959")
-      .queryParam("sort_order", "D")
-      .queryParam("tran_dtime", API_DATETIME.format(LocalDateTime.now(KOREA)))
-      .build().encode().toUri();
-    JsonNode response = getJson(uri, accessToken, "거래내역 조회");
-
     int imported = 0;
-    for (JsonNode item : response.path("res_list")) {
-      String externalId = transactionFingerprint(account, item);
-      if (transactions.existsByUserIdAndExternalId(account.getUserId(), externalId)) continue;
-      String inout = defaultText(item, "inout_type", "출금");
-      boolean income = inout.contains("입금");
-      String merchant = defaultText(item, "print_content",
-        defaultText(item, "printed_content", defaultText(item, "tran_type", "계좌 거래")));
-      long amount = Math.abs(longValue(item, "tran_amt"));
-      if (amount == 0) continue;
-      Instant occurredAt = bankInstant(required(item, "tran_date"), defaultText(item, "tran_time", "000000"));
-      transactions.save(new LedgerTransaction(
-        account.getUserId(),
-        account.getId(),
-        merchant,
-        income ? "계좌입금" : "계좌지출",
-        amount,
-        income ? "INCOME" : "EXPENSE",
-        occurredAt,
-        "OPEN_BANKING",
-        externalId
-      ));
-      imported++;
+    String traceInfo = null;
+    for (int page = 0; page < 20; page++) {
+      var builder = UriComponentsBuilder.fromUriString(apiBaseUrl + "/account/transaction_list/fin_num")
+        .queryParam("bank_tran_id", bankTranId())
+        .queryParam("fintech_use_num", account.getFintechUseNum())
+        .queryParam("inquiry_type", "A")
+        .queryParam("inquiry_base", "D")
+        .queryParam("from_date", today.minusDays(89).format(DateTimeFormatter.BASIC_ISO_DATE))
+        .queryParam("from_time", "000000")
+        .queryParam("to_date", today.format(DateTimeFormatter.BASIC_ISO_DATE))
+        .queryParam("to_time", "235959")
+        .queryParam("sort_order", "D")
+        .queryParam("tran_dtime", API_DATETIME.format(LocalDateTime.now(KOREA)));
+      if (traceInfo != null && !traceInfo.isBlank()) {
+        builder.queryParam("befor_inquiry_trace_info", traceInfo);
+      }
+      JsonNode response = getJson(builder.build().encode().toUri(), accessToken, "거래내역 조회");
+
+      for (JsonNode item : response.path("res_list")) {
+        String externalId = transactionFingerprint(account, item);
+        if (transactions.existsByUserIdAndExternalId(account.getUserId(), externalId)) continue;
+        String inout = defaultText(item, "inout_type", "출금");
+        boolean income = inout.contains("입금");
+        String merchant = defaultText(item, "print_content",
+          defaultText(item, "printed_content", defaultText(item, "tran_type", "계좌 거래")));
+        long amount = Math.abs(longValue(item, "tran_amt"));
+        if (amount == 0) continue;
+        Instant occurredAt = bankInstant(required(item, "tran_date"), defaultText(item, "tran_time", "000000"));
+        transactions.save(new LedgerTransaction(
+          account.getUserId(),
+          account.getId(),
+          merchant,
+          income ? "계좌입금" : "계좌지출",
+          amount,
+          income ? "INCOME" : "EXPENSE",
+          occurredAt,
+          "OPEN_BANKING",
+          externalId
+        ));
+        imported++;
+      }
+      if (!"Y".equalsIgnoreCase(text(response, "next_page_yn"))) break;
+      traceInfo = text(response, "befor_inquiry_trace_info");
+      if (traceInfo == null || traceInfo.isBlank()) {
+        log.warn("Open Banking response requested another page without trace information");
+        break;
+      }
     }
     return imported;
   }
