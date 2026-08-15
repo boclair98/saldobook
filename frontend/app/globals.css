@@ -118,6 +118,11 @@ button { color: inherit; }
 .sync-issues b { font-size: 10px; }
 .sync-issues p { margin: 6px 0 0; font-size: 9px; line-height: 1.5; }
 .sync-issues small { color: #9a6a37; }
+.sync-issues a { color: #7c4b16; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
+.production-mode-notice { margin: 14px 0; padding: 12px; border: 1px solid #bcdccc; border-radius: 10px; color: #245f43; background: #f0faf5; }
+.production-mode-notice b, .production-mode-notice span { display: block; }
+.production-mode-notice b { font-size: 10px; }
+.production-mode-notice span { margin-top: 4px; font-size: 9px; line-height: 1.5; }
 .bank-manager-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 .bank-manager-actions .submit-button { margin-top: 0; }
 .secondary-button { height: 46px; border: 1px solid #cfdad3; border-radius: 11px; color: var(--green); background: #fff; font-weight: 700; cursor: pointer; }

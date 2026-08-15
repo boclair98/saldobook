@@ -131,6 +131,47 @@ class OpenBankingServiceTest {
     assertThat(secondPage).contains("befor_inquiry_trace_info=NEXT-TRACE");
   }
 
+  @Test
+  void explainsMissingKftcTestInstitutionConfiguration() {
+    UUID userId = UUID.randomUUID();
+    var connection = new OpenBankingConnection(
+      userId, crypto.encrypt("access-token"), crypto.encrypt("refresh-token"),
+      "42", "login inquiry", Instant.now().plusSeconds(3600)
+    );
+    var account = new BankAccount(userId, "004", "국민은행", "123-***-456", "fin-001");
+    when(connections.findByUserId(userId)).thenReturn(Optional.of(connection));
+    when(accounts.findByUserIdAndFintechUseNum(userId, "fin-001")).thenReturn(Optional.of(account));
+    when(accounts.findByUserIdAndActiveTrueOrderByConnectedAtAsc(userId)).thenReturn(List.of(account));
+
+    enqueue("""
+      {"rsp_code":"A0000","res_list":[{"fintech_use_num":"fin-001","bank_code_std":"004","bank_name":"국민은행","account_num_masked":"123-***-456"}]}
+      """);
+    enqueue("""
+      {"rsp_code":"A0308","rsp_message":"처리대행비용 할인대상 여부 없음"}
+      """);
+    enqueue("""
+      {"rsp_code":"A0308","rsp_message":"처리대행비용 할인대상 여부 없음"}
+      """);
+
+    OpenBankingService.SyncResult result = service.sync(userId);
+
+    assertThat(result.syncedAccountCount()).isZero();
+    assertThat(result.issues()).hasSize(2);
+    assertThat(result.issues()).allSatisfy(issue -> {
+      assertThat(issue.code()).isEqualTo("A0308");
+      assertThat(issue.message()).contains("테스트정보관리 권한");
+    });
+  }
+
+  @Test
+  void reportsTestbedReadinessWithoutClaimingRealAccountData() {
+    ReflectionTestUtils.setField(service, "apiBaseUrl", "https://testapi.openbanking.or.kr/v2.0");
+    OpenBankingService.IntegrationReadiness readiness = service.readiness();
+
+    assertThat(readiness.code()).isEqualTo("TESTBED");
+    assertThat(readiness.realAccountData()).isFalse();
+  }
+
   private void enqueue(String json) {
     server.enqueue(new MockResponse()
       .setHeader("Content-Type", "application/json")

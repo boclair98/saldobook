@@ -84,6 +84,12 @@ type Banking = {
   connected: boolean;
   fullSyncConfigured: boolean;
   testMode: boolean;
+  environment: "TESTBED" | "PRODUCTION";
+  readiness: {
+    code: string;
+    message: string;
+    realAccountData: boolean;
+  };
   accounts: BankAccount[];
 };
 
@@ -114,7 +120,18 @@ export default function HomePage() {
   const [overview, setOverview] = useState<Overview>(emptyOverview);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budget, setBudget] = useState<Budget>({ month: new Date().toISOString().slice(0, 7), amount: 0 });
-  const [banking, setBanking] = useState<Banking>({ connected: false, fullSyncConfigured: false, testMode: true, accounts: [] });
+  const [banking, setBanking] = useState<Banking>({
+    connected: false,
+    fullSyncConfigured: false,
+    testMode: true,
+    environment: "TESTBED",
+    readiness: {
+      code: "CONFIGURATION_REQUIRED",
+      message: "오픈뱅킹 설정을 확인하고 있습니다.",
+      realAccountData: false,
+    },
+    accounts: [],
+  });
   const [modal, setModal] = useState<"bank" | "add" | "budget" | null>(null);
   const [filter, setFilter] = useState<"all" | "EXPENSE" | "INCOME">("all");
   const [search, setSearch] = useState("");
@@ -607,7 +624,7 @@ export default function HomePage() {
             )}
           </article>
         </section>
-        <p className="disclaimer">가상 금융 데이터는 표시하지 않습니다. 계좌 데이터는 금융결제원 오픈뱅킹 운영 승인이 완료된 후에만 가져옵니다.</p>
+        <p className="disclaimer">가상 금융 데이터는 표시하지 않습니다. 테스트 모드에서는 금융결제원 테스트 응답만, 운영 승인 후에는 사용자가 동의한 실제 계좌 데이터만 가져옵니다.</p>
       </main>
 
       {modal && (
@@ -622,6 +639,12 @@ export default function HomePage() {
                   <div className="test-mode-notice">
                     <b>금융결제원 테스트 모드</b>
                     <span>현재는 실제 은행 잔액이 아니라 포털의 ‘테스트 정보 관리’에 등록한 응답 데이터가 조회됩니다.</span>
+                  </div>
+                )}
+                {!banking.testMode && (
+                  <div className="production-mode-notice">
+                    <b>운영 API 설정</b>
+                    <span>{banking.readiness.message}</span>
                   </div>
                 )}
                 <p>{banking.connected
@@ -655,6 +678,9 @@ export default function HomePage() {
                       <p key={`${issue.accountId ?? "directory"}-${issue.stage}-${index}`}>
                         {issue.accountName} · {issue.stage === "BALANCE" ? "잔액" : issue.stage === "TRANSACTIONS" ? "거래내역" : "계좌목록"}:
                         {" "}{issue.message} <small>({issue.code})</small>
+                        {issue.code === "A0308" && (
+                          <> <a href="https://openapi.kftc.or.kr/" target="_blank" rel="noreferrer">금융결제원 포털 열기</a></>
+                        )}
                       </p>
                     ))}
                   </div>
@@ -662,11 +688,11 @@ export default function HomePage() {
                 <div className="bank-manager-actions">
                   {banking.connected && (
                     <button className="secondary-button" onClick={syncBank} disabled={saving}>
-                      {saving ? "처리 중…" : "전체 계좌 새로고침"}
+                      {saving ? "처리 중…" : banking.testMode ? "테스트 계좌 새로고침" : "전체 계좌 새로고침"}
                     </button>
                   )}
                   <button className="submit-button" onClick={connectBank} disabled={saving}>
-                    {banking.connected ? "다른 계좌 추가 연결" : "오픈뱅킹으로 연결"}
+                    {banking.connected ? "다른 계좌 추가 연결" : banking.testMode ? "테스트베드로 연결" : "오픈뱅킹으로 연결"}
                   </button>
                 </div>
                 <div className="security-note">살도는 계좌 비밀번호를 받거나 저장하지 않습니다. 금융결제원이 발급한 접근 토큰은 서버에서 암호화해 저장합니다.</div>

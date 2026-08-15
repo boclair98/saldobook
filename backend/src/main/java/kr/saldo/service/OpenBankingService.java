@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
@@ -45,7 +46,7 @@ public class OpenBankingService {
   private final TransactionRepository transactions;
   private final TokenCryptoService crypto;
   private final ObjectMapper objectMapper;
-  private final RestClient http = RestClient.create();
+  private final RestClient http;
 
   @Value("${OPEN_BANKING_CLIENT_ID:}") private String clientId;
   @Value("${OPEN_BANKING_CLIENT_SECRET:}") private String clientSecret;
@@ -66,6 +67,10 @@ public class OpenBankingService {
     this.transactions = transactions;
     this.crypto = crypto;
     this.objectMapper = objectMapper;
+    var requestFactory = new SimpleClientHttpRequestFactory();
+    requestFactory.setConnectTimeout(Duration.ofSeconds(5));
+    requestFactory.setReadTimeout(Duration.ofSeconds(20));
+    this.http = RestClient.builder().requestFactory(requestFactory).build();
   }
 
   public boolean configured() {
@@ -78,6 +83,35 @@ public class OpenBankingService {
 
   public boolean testMode() {
     return apiBaseUrl.contains("testapi.openbanking.or.kr");
+  }
+
+  public IntegrationReadiness readiness() {
+    if (!configured()) {
+      return new IntegrationReadiness(
+        "CONFIGURATION_REQUIRED",
+        "오픈뱅킹 Client ID, Secret, Callback URL 등록이 필요합니다.",
+        false
+      );
+    }
+    if (testMode()) {
+      return new IntegrationReadiness(
+        "TESTBED",
+        "테스트베드 연결입니다. 실제 계좌가 아닌 금융결제원 테스트 응답만 조회합니다.",
+        false
+      );
+    }
+    if (!transactionSyncConfigured()) {
+      return new IntegrationReadiness(
+        "ORGANIZATION_CODE_REQUIRED",
+        "운영 이용기관코드 10자리를 등록해야 잔액과 거래내역을 조회할 수 있습니다.",
+        false
+      );
+    }
+    return new IntegrationReadiness(
+      "PRODUCTION_ENDPOINT_CONFIGURED",
+      "운영 API 주소가 설정되었습니다. 금융결제원의 이용승인 상태도 별도로 확인해야 합니다.",
+      true
+    );
   }
 
   @Transactional
@@ -171,7 +205,14 @@ public class OpenBankingService {
         account.getLastSyncedAt()
       ))
       .toList();
-    return new ConnectionView(connected, transactionSyncConfigured(), testMode(), accountViews);
+    return new ConnectionView(
+      connected,
+      transactionSyncConfigured(),
+      testMode(),
+      testMode() ? "TESTBED" : "PRODUCTION",
+      readiness(),
+      accountViews
+    );
   }
 
   @Transactional
@@ -360,7 +401,15 @@ public class OpenBankingService {
     String code = defaultText(response, "rsp_code", "UNKNOWN");
     String message = defaultText(response, "rsp_message",
       defaultText(response, "bank_rsp_message", operation + "에 실패했습니다."));
-    return new KftcApiException(code, operation + ": " + safeMessage(message));
+    return new KftcApiException(code, actionableMessage(code, operation, message));
+  }
+
+  private String actionableMessage(String code, String operation, String message) {
+    if ("A0308".equalsIgnoreCase(code)) {
+      return "금융결제원에 테스트 이용기관 정보가 아직 설정되지 않았습니다. "
+        + "테스트정보관리 권한과 ‘처리대행비용 할인대상 여부’ 등록을 요청해 주세요.";
+    }
+    return operation + ": " + safeMessage(message);
   }
 
   private SyncIssue issue(BankAccount account, String stage, KftcApiException exception) {
@@ -469,8 +518,11 @@ public class OpenBankingService {
     boolean connected,
     boolean fullSyncConfigured,
     boolean testMode,
+    String environment,
+    IntegrationReadiness readiness,
     List<AccountView> accounts
   ) {}
+  public record IntegrationReadiness(String code, String message, boolean realAccountData) {}
   public record SyncIssue(UUID accountId, String accountName, String stage, String code, String message) {}
   public record SyncResult(
     int accountCount,
