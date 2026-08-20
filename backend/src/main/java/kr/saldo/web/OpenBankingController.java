@@ -36,6 +36,9 @@ public class OpenBankingController {
   @PostMapping("/connect")
   public Map<String, String> connect(HttpSession session) {
     var user = currentUser.require(session);
+    if (!openBanking.enabled()) {
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "계좌 연동 기능이 현재 비활성화되어 있습니다.");
+    }
     if (!openBanking.configured()) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "오픈뱅킹 서버 설정이 완료되지 않았습니다.");
     }

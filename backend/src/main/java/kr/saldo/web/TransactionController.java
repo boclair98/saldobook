@@ -9,6 +9,8 @@ import jakarta.servlet.http.HttpSession;
 import kr.saldo.domain.LedgerTransaction;
 import kr.saldo.repo.TransactionRepository;
 import kr.saldo.service.CurrentUserService;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,6 +33,28 @@ public class TransactionController {
   public List<LedgerTransaction> list(HttpSession session) {
     var user = currentUser.require(session);
     return transactions.findTop100ByUserIdOrderByTransactedAtDesc(user.getId());
+  }
+
+  @GetMapping("/page")
+  public TransactionPage page(
+    @RequestParam(defaultValue = "0") int page,
+    @RequestParam(defaultValue = "50") int size,
+    HttpSession session
+  ) {
+    var user = currentUser.require(session);
+    int safePage = Math.max(0, page);
+    int safeSize = Math.min(100, Math.max(1, size));
+    var result = transactions.findByUserIdOrderByTransactedAtDesc(
+      user.getId(),
+      PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "transactedAt"))
+    );
+    return new TransactionPage(
+      result.getContent(),
+      result.getNumber(),
+      result.getSize(),
+      result.getTotalElements(),
+      result.hasNext()
+    );
   }
 
   @PostMapping
@@ -71,5 +95,13 @@ public class TransactionController {
     @Min(1) long amount,
     @NotBlank @Pattern(regexp = "INCOME|EXPENSE") String type,
     Instant transactedAt
+  ) {}
+
+  public record TransactionPage(
+    List<LedgerTransaction> items,
+    int page,
+    int size,
+    long total,
+    boolean hasNext
   ) {}
 }

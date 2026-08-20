@@ -84,9 +84,9 @@ Google·카카오 로그인과 금융결제원 오픈뱅킹 연동을 지원하�
 - 월 예산과 사용률
 - 카테고리 분석과 최근 6개월 추이
 - CSV 내보내기
-- 금융결제원 오픈뱅킹 OAuth 계좌 연결
-- 여러 계좌 등록과 계좌별 잔액·거래 동기화
-- 테스트베드/운영망 상태와 실계좌 데이터 가능 여부 표시
+- 금융결제원 오픈뱅킹 OAuth 계좌 연결(운영 설정에서 선택적으로 활성화)
+- 여러 계좌 등록과 계좌별 잔액·거래 동기화(기본 비활성)
+- 거래 페이지네이션과 DB 집계 기반 통계
 - 계좌별 부분 실패 처리 및 금융결제원 응답 코드 표시
 - 금융결제원 `A0308` 기관 설정 오류의 해결 방법 안내
 - 개별 계좌 제거와 전체 연결 해제
@@ -165,10 +165,11 @@ docker compose up --build
 | `GOOGLE_CLIENT_SECRET` | Y | Google OAuth Client Secret |
 | `KAKAO_REST_API_KEY` | Y | 카카오 REST API 키 |
 | `KAKAO_CLIENT_SECRET` | Y | 카카오 로그인 Client Secret |
-| `OPEN_BANKING_CLIENT_ID` | Y | 금융결제원 Client ID |
-| `OPEN_BANKING_CLIENT_SECRET` | Y | 금융결제원 Client Secret |
-| `OPEN_BANKING_REDIRECT_URI` | Y | 금융결제원 OAuth Callback URL |
-| `OPEN_BANKING_USE_ORG_CODE` | Y | 금융결제원 이용기관코드 10자리 |
+| `OPEN_BANKING_ENABLED` | N | 계좌 연동 기능 플래그. 기본값 `false` |
+| `OPEN_BANKING_CLIENT_ID` | 계좌 연동 시 | 금융결제원 Client ID |
+| `OPEN_BANKING_CLIENT_SECRET` | 계좌 연동 시 | 금융결제원 Client Secret |
+| `OPEN_BANKING_REDIRECT_URI` | 계좌 연동 시 | 금융결제원 OAuth Callback URL |
+| `OPEN_BANKING_USE_ORG_CODE` | 계좌 연동 시 | 금융결제원 이용기관코드 10자리 |
 | `TOKEN_ENCRYPTION_KEY` | Y | Base64 인코딩된 무작위 32바이트 키 |
 | `OPEN_BANKING_AUTHORIZE_URL` | N | 기본값은 금융결제원 테스트 인가 URL |
 | `OPEN_BANKING_TOKEN_URL` | N | 기본값은 금융결제원 테스트 토큰 URL |
@@ -187,9 +188,9 @@ $bytes = New-Object byte[] 32
 
 생성 결과는 비밀 저장소에만 보관하고 GitHub, 문서, 메신저에 올리지 않습니다.
 
-## 금융결제원 테스트베드
+## 금융결제원 테스트베드(선택 기능)
 
-테스트베드에서는 실제 은행 잔액이 아니라 금융결제원 포털에 등록한 테스트 응답 데이터가 반환됩니다.
+계좌 연동은 기본적으로 비활성화되어 있습니다. `OPEN_BANKING_ENABLED=true`로 켠 경우에도 테스트베드에서는 실제 은행 잔액이 아니라 금융결제원 포털에 등록한 테스트 응답 데이터가 반환됩니다.
 
 발급 화면, 등록할 URL과 운영 전환 조건은 [금융 연동 설정 가이드](docs/FINANCIAL_INTEGRATION.md)에 정리했습니다.
 
@@ -203,7 +204,7 @@ $bytes = New-Object byte[] 32
 
 운영 전환 시 테스트 URL 세 개를 금융결제원이 안내한 운영 URL로 교체하고 운영 Client ID/Secret을 별도 비밀값으로 등록해야 합니다.
 
-현재 계좌 기능은 조회 전용이며 입금·출금이체(결제)는 구현되어 있지 않습니다. 실제 잔액과 거래내역은 금융결제원의 운영 이용기관 승인 및 조회 API 권한이 있어야 사용할 수 있습니다.
+현재 서비스 배포본은 수동 입력 가계부 모드입니다. 계좌 기능은 `OPEN_BANKING_ENABLED=true`일 때만 화면에 나타나며, 입금·출금이체(결제)는 구현되어 있지 않습니다. 실제 잔액과 거래내역은 금융결제원의 운영 이용기관 승인 및 조회 API 권한이 있어야 사용할 수 있습니다.
 
 ## 데이터 보호
 

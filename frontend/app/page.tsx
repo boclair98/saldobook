@@ -47,6 +47,14 @@ type Transaction = {
   source: string;
 };
 
+type TransactionPage = {
+  items: Transaction[];
+  page: number;
+  size: number;
+  total: number;
+  hasNext: boolean;
+};
+
 type Overview = {
   income: number;
   expense: number;
@@ -81,6 +89,7 @@ type BankAccount = {
 };
 
 type Banking = {
+  enabled: boolean;
   connected: boolean;
   fullSyncConfigured: boolean;
   testMode: boolean;
@@ -119,8 +128,12 @@ export default function HomePage() {
   const [auth, setAuth] = useState<Auth | null>(null);
   const [overview, setOverview] = useState<Overview>(emptyOverview);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [hasMoreTransactions, setHasMoreTransactions] = useState(false);
+  const [transactionPage, setTransactionPage] = useState(0);
+  const [loadingMoreTransactions, setLoadingMoreTransactions] = useState(false);
   const [budget, setBudget] = useState<Budget>({ month: new Date().toISOString().slice(0, 7), amount: 0 });
   const [banking, setBanking] = useState<Banking>({
+    enabled: false,
     connected: false,
     fullSyncConfigured: false,
     testMode: true,
@@ -144,7 +157,7 @@ export default function HomePage() {
   const loadPrivateData = useCallback(async () => {
     const [overviewResult, transactionResult, budgetResult, bankingResult] = await Promise.allSettled([
       fetch("/api/overview", { credentials: "include", cache: "no-store" }),
-      fetch("/api/transactions", { credentials: "include", cache: "no-store" }),
+      fetch("/api/transactions/page?page=0&size=50", { credentials: "include", cache: "no-store" }),
       fetch("/api/budget", { credentials: "include", cache: "no-store" }),
       fetch("/api/openbanking/accounts", { credentials: "include", cache: "no-store" }),
     ]);
@@ -154,7 +167,12 @@ export default function HomePage() {
       throw new Error("가계부 데이터를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.");
     }
     if (overviewResult.status === "fulfilled") setOverview(await overviewResult.value.json());
-    if (transactionResult.status === "fulfilled") setTransactions(await transactionResult.value.json());
+    if (transactionResult.status === "fulfilled") {
+      const transactionPageResult: TransactionPage = await transactionResult.value.json();
+      setTransactions(transactionPageResult.items);
+      setTransactionPage(transactionPageResult.page);
+      setHasMoreTransactions(transactionPageResult.hasNext);
+    }
     if (budgetResult.status === "fulfilled") setBudget(await budgetResult.value.json());
 
     if (bankingResult.status === "fulfilled" && bankingResult.value.ok) {
@@ -164,6 +182,26 @@ export default function HomePage() {
       setBankingError("계좌 서비스에 일시적으로 연결하지 못했습니다. 로그인과 가계부 데이터는 정상적으로 사용할 수 있어요.");
     }
   }, []);
+
+  async function loadMoreTransactions() {
+    if (loadingMoreTransactions || !hasMoreTransactions) return;
+    setLoadingMoreTransactions(true);
+    try {
+      const response = await fetch(`/api/transactions/page?page=${transactionPage + 1}&size=50`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("거래 내역을 더 불러오지 못했습니다.");
+      const nextPage: TransactionPage = await response.json();
+      setTransactions((current) => [...current, ...nextPage.items]);
+      setTransactionPage(nextPage.page);
+      setHasMoreTransactions(nextPage.hasNext);
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "거래 내역을 더 불러오지 못했습니다.");
+    } finally {
+      setLoadingMoreTransactions(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -459,7 +497,7 @@ export default function HomePage() {
           <a className="nav-item active" href="#dashboard"><LayoutGrid size={18} /> 한눈에 보기</a>
           <a className="nav-item" href="#transactions"><WalletCards size={18} /> 거래 내역</a>
           <a className="nav-item" href="#budget"><Target size={18} /> 이번 달</a>
-          <a className="nav-item" href="#assets"><Landmark size={18} /> 연결 자산</a>
+          {banking.enabled && <a className="nav-item" href="#assets"><Landmark size={18} /> 연결 자산</a>}
         </nav>
         <div className="nav-spacer" />
         <div className="mini-card secure-card">
@@ -509,7 +547,7 @@ export default function HomePage() {
             </div>
           </article>
 
-          <article className="account-card" id="assets">
+          {banking.enabled && <article className="account-card" id="assets">
             <div className="card-head">
               <span>연결된 자산</span>
               <button onClick={() => setModal("bank")} disabled={saving}>
@@ -533,7 +571,7 @@ export default function HomePage() {
                 ))}
               </div>
             )}
-          </article>
+          </article>}
 
           <article className="budget-card" id="budget">
             <div className="card-head"><span>이번 달 예산</span><button onClick={() => setModal("budget")}>설정 <ChevronRight size={14} /></button></div>
@@ -622,9 +660,14 @@ export default function HomePage() {
                 ))}
               </div>
             )}
+            {hasMoreTransactions && (
+              <button className="load-more-button" onClick={loadMoreTransactions} disabled={loadingMoreTransactions}>
+                {loadingMoreTransactions ? "불러오는 중…" : "더 많은 거래 불러오기"}
+              </button>
+            )}
           </article>
         </section>
-        <p className="disclaimer">가상 금융 데이터는 표시하지 않습니다. 테스트 모드에서는 금융결제원 테스트 응답만, 운영 승인 후에는 사용자가 동의한 실제 계좌 데이터만 가져옵니다.</p>
+        <p className="disclaimer">가상 금융 데이터는 표시하지 않습니다. 모든 금액과 거래는 로그인한 계정에 저장한 기록을 기준으로 계산합니다.</p>
       </main>
 
       {modal && (
