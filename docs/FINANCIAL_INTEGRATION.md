@@ -19,6 +19,8 @@
 
 ## 3. 금융결제원 오픈뱅킹 테스트베드
 
+현재 서비스 배포본은 계좌 연동 기능을 기본적으로 꺼 둡니다. 수동 가계부만 사용할 때는 금융결제원 키가 필요하지 않습니다. 다시 계좌 연결을 사용할 경우 `OPEN_BANKING_ENABLED=true`를 Secret으로 등록한 뒤 재배포하세요.
+
 1. [금융결제원 오픈 API 개발자사이트](https://openapi.kftc.or.kr/)에서 이용기관 계정을 만들고 오픈뱅킹 이용 신청을 진행합니다.
 2. API Key를 생성해 오픈뱅킹 서비스에 연결합니다.
 3. Callback URL에 `https://saldobook.coders.kr/api/openbanking/callback`을 등록합니다.

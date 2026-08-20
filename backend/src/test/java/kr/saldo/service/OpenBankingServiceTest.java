@@ -45,6 +45,7 @@ class OpenBankingServiceTest {
     String baseUrl = server.url("/v2.0").toString().replaceAll("/$", "");
     ReflectionTestUtils.setField(service, "clientId", "client-id");
     ReflectionTestUtils.setField(service, "clientSecret", "client-secret");
+    ReflectionTestUtils.setField(service, "enabled", true);
     ReflectionTestUtils.setField(service, "redirectUri", "https://saldobook.example/api/openbanking/callback");
     ReflectionTestUtils.setField(service, "useOrgCode", "A123456789");
     ReflectionTestUtils.setField(service, "tokenUrl", server.url("/oauth/2.0/token").toString());

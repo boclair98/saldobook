@@ -50,6 +50,7 @@ public class OpenBankingService {
 
   @Value("${OPEN_BANKING_CLIENT_ID:}") private String clientId;
   @Value("${OPEN_BANKING_CLIENT_SECRET:}") private String clientSecret;
+  @Value("${OPEN_BANKING_ENABLED:false}") private boolean enabled;
   @Value("${OPEN_BANKING_REDIRECT_URI:}") private String redirectUri;
   @Value("${OPEN_BANKING_USE_ORG_CODE:}") private String useOrgCode;
   @Value("${OPEN_BANKING_TOKEN_URL:https://testapi.openbanking.or.kr/oauth/2.0/token}") private String tokenUrl;
@@ -75,6 +76,10 @@ public class OpenBankingService {
 
   public boolean configured() {
     return !clientId.isBlank() && !clientSecret.isBlank() && !redirectUri.isBlank();
+  }
+
+  public boolean enabled() {
+    return enabled;
   }
 
   public boolean transactionSyncConfigured() {
@@ -116,6 +121,7 @@ public class OpenBankingService {
 
   @Transactional
   public void connect(UUID userId, String authorizationCode) {
+    requireEnabled();
     requireConfigured();
     var form = new LinkedMultiValueMap<String, String>();
     form.add("code", authorizationCode);
@@ -154,6 +160,7 @@ public class OpenBankingService {
 
   @Transactional
   public SyncResult sync(UUID userId) {
+    requireEnabled();
     OpenBankingConnection connection = connections.findByUserId(userId)
       .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "먼저 오픈뱅킹 계좌를 연결해 주세요."));
     String accessToken = validAccessToken(connection);
@@ -206,7 +213,8 @@ public class OpenBankingService {
       ))
       .toList();
     return new ConnectionView(
-      connected,
+      enabled,
+      enabled && connected,
       transactionSyncConfigured(),
       testMode(),
       testMode() ? "TESTBED" : "PRODUCTION",
@@ -436,6 +444,12 @@ public class OpenBankingService {
     }
   }
 
+  private void requireEnabled() {
+    if (!enabled) {
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "계좌 연동 기능이 현재 비활성화되어 있습니다.");
+    }
+  }
+
   private String bankTranId() {
     if (!transactionSyncConfigured()) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "금융결제원 이용기관코드 등록이 필요합니다.");
@@ -515,6 +529,7 @@ public class OpenBankingService {
   ) {}
 
   public record ConnectionView(
+    boolean enabled,
     boolean connected,
     boolean fullSyncConfigured,
     boolean testMode,

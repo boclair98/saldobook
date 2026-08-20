@@ -94,6 +94,9 @@ button { color: inherit; }
 .transaction > strong { text-align: right; font-size: 11px; }.transaction > strong.income { color: var(--green); }
 .delete-transaction { display: grid; place-items: center; width: 25px; height: 25px; border: 0; border-radius: 7px; color: #a5aaa7; background: transparent; cursor: pointer; }
 .delete-transaction:hover { color: #b54d3e; background: #fbecea; }
+.load-more-button { width: 100%; margin-top: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--green); background: #fff; font-size: 10px; font-weight: 800; cursor: pointer; }
+.load-more-button:hover:not(:disabled) { border-color: var(--green); background: var(--soft-green); }
+.load-more-button:disabled { cursor: wait; opacity: .6; }
 .disclaimer { max-width: 1440px; margin: 14px auto 0; color: #9aa19d; font-size: 9px; text-align: right; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; background: rgb(22 34 28 / 55%); backdrop-filter: blur(5px); }
 .modal { position: relative; width: min(420px, 100%); max-height: 90vh; overflow: auto; padding: 30px; border-radius: 22px; background: #fff; box-shadow: 0 24px 80px rgb(0 0 0 / 22%); }

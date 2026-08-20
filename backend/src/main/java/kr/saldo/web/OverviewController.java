@@ -1,6 +1,5 @@
 package kr.saldo.web;
 
-import kr.saldo.domain.LedgerTransaction;
 import kr.saldo.repo.TransactionRepository;
 import kr.saldo.service.CurrentUserService;
 import jakarta.servlet.http.HttpSession;
@@ -9,7 +8,6 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.Instant;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -32,35 +30,33 @@ public class OverviewController {
   @GetMapping
   public Overview overview(HttpSession session) {
     var user = currentUser.require(session);
-    var all = transactions.findTop100ByUserIdOrderByTransactedAtDesc(user.getId());
     ZoneId seoul = ZoneId.of("Asia/Seoul");
     ZonedDateTime now = ZonedDateTime.now(seoul);
-    Instant monthStart = now.withDayOfMonth(1).toLocalDate().atStartOfDay(seoul).toInstant();
-    long income = 0;
-    long expense = 0;
+    YearMonth currentMonth = YearMonth.from(now);
+    var monthStart = currentMonth.atDay(1).atStartOfDay(seoul).toInstant();
+    var nextMonthStart = currentMonth.plusMonths(1).atDay(1).atStartOfDay(seoul).toInstant();
+    var sixMonthStart = currentMonth.minusMonths(5).atDay(1).atStartOfDay(seoul).toInstant();
+
+    long income = transactions.sumAmount(user.getId(), monthStart, nextMonthStart, "INCOME");
+    long expense = transactions.sumAmount(user.getId(), monthStart, nextMonthStart, "EXPENSE");
     Map<String, Long> categories = new LinkedHashMap<>();
+    transactions.sumExpensesByCategory(user.getId(), monthStart, nextMonthStart)
+      .forEach(value -> categories.put(value.getCategory(), value.getAmount()));
     Map<YearMonth, long[]> monthlyTotals = new LinkedHashMap<>();
     for (int offset = 5; offset >= 0; offset--) {
-      monthlyTotals.put(YearMonth.from(now.minusMonths(offset)), new long[] {0, 0});
+      monthlyTotals.put(currentMonth.minusMonths(offset), new long[] {0, 0});
     }
-    for (LedgerTransaction transaction : all) {
-      YearMonth transactionMonth = YearMonth.from(transaction.getTransactedAt().atZone(seoul));
-      long[] monthTotals = monthlyTotals.get(transactionMonth);
-      if (monthTotals != null) {
-        if ("INCOME".equalsIgnoreCase(transaction.getType())) monthTotals[0] += transaction.getAmount();
-        else monthTotals[1] += transaction.getAmount();
-      }
-      if (transaction.getTransactedAt().isBefore(monthStart)) continue;
-      if ("INCOME".equalsIgnoreCase(transaction.getType())) {
-        income += transaction.getAmount();
-      } else {
-        expense += transaction.getAmount();
-        categories.merge(transaction.getCategory(), transaction.getAmount(), Long::sum);
-      }
-    }
+    transactions.sumMonthlyTotals(user.getId(), sixMonthStart, nextMonthStart)
+      .forEach(value -> {
+        long[] totals = monthlyTotals.get(YearMonth.parse(value.getMonth()));
+        if (totals != null) {
+          totals[0] = value.getIncome();
+          totals[1] = value.getExpense();
+        }
+      });
     List<MonthlyPoint> monthly = new ArrayList<>();
     monthlyTotals.forEach((month, totals) -> monthly.add(new MonthlyPoint(month.toString(), totals[0], totals[1])));
-    return new Overview(income, expense, income - expense, categories, all.size(), monthly);
+    return new Overview(income, expense, income - expense, categories, (int) Math.min(Integer.MAX_VALUE, transactions.countByUserId(user.getId())), monthly);
   }
 
   public record Overview(
