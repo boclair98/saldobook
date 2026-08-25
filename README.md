@@ -1,184 +1,214 @@
 # 살도 (Saldobook)
 
-Google·카카오 로그인과 금융결제원 오픈뱅킹 연동을 지원하는 사용자별 가계부입니다.
+로그인한 사용자만 자신의 수입·지출·예산을 관리할 수 있는 개인 가계부 서비스입니다.
 
-- 운영 URL: [https://saldobook.coders.kr](https://saldobook.coders.kr)
-- 현재 금융 연동 상태: 금융결제원 **테스트베드**
-- 백엔드: Java 21, Spring Boot 3.4, Spring Data JPA, Flyway
-- 프런트엔드: TypeScript, Next.js 16, React 19
-- 데이터베이스: PostgreSQL 16
+[서비스 바로가기](https://saldobook.coders.kr) · [운영 가이드](README-SALDO.md) · [금융 연동 가이드](docs/FINANCIAL_INTEGRATION.md)
 
-> 현재 배포본은 실제 은행 운영망이 아닙니다. 실제 계좌 잔액과 거래내역을 제공하려면 금융결제원의 이용기관 운영 승인, 계약, 보안 점검 및 운영 키 발급이 필요합니다.
+> [!NOTE]
+> 현재 운영 배포본은 **수동 입력 가계부 모드**입니다. 오픈뱅킹 기능은 기본적으로 꺼져 있으며, 금융결제원 운영 승인 없이 실제 은행 잔액이나 거래내역을 제공하지 않습니다.
 
-## 서비스 화면
+## 프로젝트 소개
 
-아래 이미지는 제품 흐름을 설명하기 위한 샘플 화면입니다. 이름, 금액, 계좌와 거래내역은 모두 가상 데이터이며 실행 중인 서비스에는 데모 데이터 모드가 없습니다.
+살도는 “내가 기록한 돈의 흐름을 안전하게 이해한다”는 목표로 만든 개인 금융 기록 서비스입니다.
 
-### 한눈에 보는 개인 대시보드
+- Google·카카오 계정으로 로그인
+- 사용자별 데이터 분리와 서버 세션 인증
+- 수입·지출 직접 입력, 검색, 필터, 삭제 및 CSV 내보내기
+- 월 예산과 사용률, 카테고리별 소비 분석
+- 최근 6개월 수입·지출 추이
+- 거래 페이지네이션과 DB 집계 기반 통계
+- 금융결제원 오픈뱅킹 연동 구조(선택 기능, 기본 비활성)
+
+## 주요 기능
+
+| 영역 | 기능 | 설명 |
+|---|---|---|
+| 인증 | Google·카카오 OAuth 2.0 | 공식 인증 화면에서 로그인하고 서비스는 소셜 비밀번호를 받지 않습니다. |
+| 가계부 | 수입·지출 등록/삭제 | 거래 내용, 금액, 유형, 카테고리를 저장합니다. |
+| 거래 관리 | 검색·필터·페이지네이션 | 내용·카테고리 검색, 수입/지출 필터와 추가 목록 불러오기를 지원합니다. |
+| 예산 | 월 예산 설정 | 이번 달 지출, 남은 금액과 예산 사용률을 계산합니다. |
+| 분석 | 카테고리·월별 추이 | DB 집계 결과로 소비 비중과 최근 6개월 흐름을 보여줍니다. |
+| 내보내기 | CSV 다운로드 | 현재 필터링된 거래를 UTF-8 CSV로 내려받습니다. |
+| 보안 | 사용자별 데이터 격리 | 모든 조회·변경 요청에서 로그인 사용자와 데이터 소유자를 확인합니다. |
+| 오픈뱅킹 | 계좌 연결·동기화 | 금융결제원 승인과 운영 설정이 완료된 경우에만 활성화할 수 있습니다. |
+
+### 실제 사용 흐름
+
+1. Google 또는 카카오로 로그인합니다.
+2. 이번 달 수입·지출·예산 현황을 확인합니다.
+3. 거래를 직접 추가하고 검색하거나 유형별로 필터링합니다.
+4. 카테고리별 소비 비중과 최근 6개월 추이를 확인합니다.
+5. 필요하면 CSV로 거래를 내려받습니다.
+
+## 화면
+
+화면 이미지의 이름, 금액, 계좌와 거래내역은 설명을 위한 샘플입니다. 실행 중인 서비스에는 임의의 데모 거래를 넣지 않습니다.
+
+### 개인 대시보드
 
 [![살도 개인 대시보드](docs/images/dashboard.png)](https://saldobook.coders.kr)
-
-- 이번 달 수입·지출·남은 돈과 연결 자산 합계를 한 화면에서 확인합니다.
-- 월 예산의 사용률과 남은 금액을 자동 계산합니다.
-- 최근 6개월 수입과 지출 추이를 비교합니다.
 
 ### 거래내역과 소비 분석
 
 ![살도 거래내역과 소비 분석](docs/images/transactions.png)
 
-- 계좌에서 불러온 거래와 사용자가 직접 입력한 거래를 구분합니다.
-- 내용·카테고리 검색, 수입·지출 필터와 CSV 내보내기를 지원합니다.
-- 카테고리별 지출 금액과 비중을 자동으로 계산합니다.
+### 선택적 오픈뱅킹 계좌 관리
 
-### 여러 계좌 연결과 관리
+![살도 오픈뱅킹 계좌 관리](docs/images/account-management.png)
 
-![살도 다계좌 오픈뱅킹 관리](docs/images/account-management.png)
+## 기술 스택
 
-- 연결된 여러 계좌의 마스킹 번호, 잔액과 마지막 동기화 시간을 확인합니다.
-- 전체 계좌를 한 번에 새로고침하거나 다른 계좌를 추가로 연결할 수 있습니다.
-- 계좌를 개별 제거하거나 오픈뱅킹 연결 전체를 해제할 수 있습니다.
-- 계좌 비밀번호는 수집하지 않으며 금융결제원 접근 토큰은 서버에서 암호화합니다.
-
-> 화면의 샘플은행, 데모저축은행, 금액, 계좌번호와 거래내역은 실제 금융정보가 아닙니다. 실제 로그인 화면을 새로 촬영할 때는 사용자 이름, 개인 ID, 계좌번호, 잔액과 거래내역을 반드시 마스킹해야 합니다.
-
-## 사용자가 이용하는 흐름
-
-| 단계 | 화면/기능 | 사용자 경험 |
-|---:|---|---|
-| 1 | 소셜 로그인 | Google 또는 카카오 계정으로 본인 가계부에 로그인합니다. |
-| 2 | 한눈에 보기 | 이번 달 수입·지출·남은 금액, 예산 사용률과 연결 자산 합계를 확인합니다. |
-| 3 | 거래 기록 | 수입·지출을 직접 등록하고 검색, 유형 필터, 삭제 및 CSV 내보내기를 사용합니다. |
-| 4 | 소비 분석 | 카테고리별 지출 비중과 최근 6개월 수입·지출 흐름을 확인합니다. |
-| 5 | 계좌 연결 | 금융결제원 인증 화면에서 본인이 동의한 여러 계좌를 연결합니다. |
-| 6 | 계좌 동기화 | 계좌별 잔액과 거래내역을 가져오며, 일부 계좌가 실패해도 나머지는 계속 처리합니다. |
-| 7 | 연결 관리 | 계좌를 추가하거나 개별 제거하고, 필요하면 오픈뱅킹 연결 전체를 해제합니다. |
-
-### 개인 대시보드
-
-- 모든 금액과 거래는 로그인한 사용자 ID를 기준으로 분리됩니다.
-- 이번 달 수입, 지출, 남은 돈과 연결된 계좌 잔액을 한 화면에서 확인합니다.
-- 예산을 설정하면 현재 지출 대비 사용률과 남은 예산을 계산합니다.
-- 실제 저장 데이터가 없으면 가상 거래를 대신 보여주지 않고 빈 상태로 안내합니다.
-
-### 거래와 분석
-
-- 직접 입력한 거래와 오픈뱅킹에서 가져온 거래를 구분합니다.
-- 동일한 외부 거래가 다시 조회돼도 중복 저장하지 않습니다.
-- 내용이나 카테고리로 검색하고 수입·지출 유형을 필터링할 수 있습니다.
-- 현재 목록을 UTF-8 CSV로 내려받을 수 있습니다.
-- 카테고리별 소비 비중과 월별 추이를 자동 계산합니다.
-
-### 다계좌 오픈뱅킹
-
-- 금융결제원에서 발급한 핀테크 이용번호를 사용하며 실계좌번호를 직접 수집하지 않습니다.
-- 연결된 모든 계좌를 관리 화면에 표시합니다.
-- 계좌별 잔액 조회와 거래내역 조회 결과를 독립적으로 처리합니다.
-- 금융결제원 오류가 발생하면 실패 단계, 응답 코드와 안전하게 정리한 메시지를 사용자에게 표시합니다.
-- 사용자가 제거한 계좌는 일반 새로고침으로 다시 활성화되지 않으며, OAuth 연결을 다시 완료한 경우에만 복원됩니다.
-
-## 주요 기능
-
-- Google·카카오 OAuth 2.0 로그인
-- JDBC 기반 서버 세션과 사용자별 데이터 격리
-- 수입·지출 등록, 삭제, 검색 및 필터
-- 월 예산과 사용률
-- 카테고리 분석과 최근 6개월 추이
-- CSV 내보내기
-- 금융결제원 오픈뱅킹 OAuth 계좌 연결(운영 설정에서 선택적으로 활성화)
-- 여러 계좌 등록과 계좌별 잔액·거래 동기화(기본 비활성)
-- 거래 페이지네이션과 DB 집계 기반 통계
-- 계좌별 부분 실패 처리 및 금융결제원 응답 코드 표시
-- 금융결제원 `A0308` 기관 설정 오류의 해결 방법 안내
-- 개별 계좌 제거와 전체 연결 해제
-- AES-256-GCM 토큰 암호화
-- 외부 거래 지문을 이용한 중복 저장 방지
+| 구분 | 기술 |
+|---|---|
+| Frontend | TypeScript, Next.js 16, React 19, CSS |
+| Backend | Java 21, Spring Boot 3.4, Spring Data JPA, Spring Session JDBC |
+| Database | PostgreSQL 16, Flyway |
+| 인증 | Google OAuth 2.0, Kakao OAuth 2.0 |
+| 금융 API | 금융결제원 오픈뱅킹 API v2.0 (선택 기능) |
+| 실행/배포 | Docker Compose, nginx, coders.kr |
+| CI | GitHub Actions |
 
 ## 아키텍처
 
 ```text
-Browser
-  └─ HTTPS
-      └─ nginx / Next.js static frontend
-          ├─ /                 정적 SPA
-          └─ /api/*            Spring Boot로 프록시
-                                ├─ PostgreSQL / Flyway
-                                ├─ Google OAuth
-                                ├─ Kakao OAuth
-                                └─ 금융결제원 Open Banking API
+Browser / Mobile Web
+        │ HTTPS
+        ▼
+nginx
+  ├─ 정적 Next.js export (frontend/out)
+  └─ /api/* reverse proxy
+        │
+        ▼
+Spring Boot API
+  ├─ OAuth 로그인과 JDBC 세션
+  ├─ 사용자별 권한·데이터 소유권 확인
+  ├─ 거래·예산·통계 API
+  └─ 선택적 금융결제원 Open Banking API
+        │
+        ▼
+PostgreSQL
+  ├─ 사용자·거래·예산
+  ├─ Spring Session
+  └─ Flyway migration
 ```
 
-프런트엔드는 빌드 시 정적 파일로 내보내 nginx가 제공합니다. 인증, 데이터 소유권 확인, OAuth 콜백, 금융 API 호출은 모두 Spring Boot에서 처리합니다.
+프런트엔드는 정적 파일로 빌드되고 nginx가 제공합니다. 인증, 사용자별 데이터 접근, OAuth callback과 외부 금융 API 호출은 Spring Boot에서 처리합니다.
 
-## 디렉터리
+## 프로젝트 구조
 
 ```text
-backend/
-  pom.xml
-  src/main/java/kr/saldo/
-  src/main/resources/
-    application.yml
-    db/migration/
-frontend/
-  app/
-  components/
-  Dockerfile
-coders.yaml
-compose.yaml
+saldobook/
+├── backend/
+│   ├── src/main/java/kr/saldo/
+│   │   ├── domain/       # 사용자, 거래, 예산, 계좌 도메인
+│   │   ├── repo/         # JPA repository
+│   │   ├── service/      # 인증·거래·통계·오픈뱅킹 로직
+│   │   └── web/          # REST controller·request filter
+│   └── src/main/resources/
+│       ├── application.yml
+│       └── db/migration/ # Flyway schema migration
+├── frontend/
+│   ├── app/              # Next.js App Router 화면
+│   ├── components/       # 공통 UI 컴포넌트
+│   ├── lib/              # 클라이언트 API·인증 helper
+│   └── Dockerfile        # 정적 빌드 + nginx 이미지
+├── docs/
+│   ├── FINANCIAL_INTEGRATION.md
+│   └── images/
+├── .github/workflows/ci.yml
+├── coders.yaml
+├── compose.yaml
+└── .env.example
 ```
 
-## 로컬 실행
+## API 개요
 
-### 1. 환경 변수 준비
+인증이 필요한 API는 로그인 세션의 사용자만 접근할 수 있습니다.
+
+| Method | Endpoint | 설명 |
+|---|---|---|
+| `GET` | `/api/auth/me` | 로그인 상태와 OAuth 제공자 설정 확인 |
+| `GET` | `/api/overview` | 월별 합계·카테고리·6개월 추이 |
+| `GET` | `/api/transactions/page` | 페이지 단위 거래 조회 |
+| `POST` | `/api/transactions` | 수입·지출 등록 |
+| `DELETE` | `/api/transactions/{id}` | 내 거래 삭제 |
+| `GET` / `PUT` | `/api/budget` | 월 예산 조회·저장 |
+| `GET` | `/api/openbanking/accounts` | 선택 기능의 연결 상태 조회 |
+
+오픈뱅킹 endpoint는 `OPEN_BANKING_ENABLED=true`일 때만 사용할 수 있습니다. 송금·결제 기능은 구현되어 있지 않습니다.
+
+## 시작하기
+
+### 요구 사항
+
+- Docker Desktop
+- Google·카카오 OAuth 개발용 키
+- Java 21, Maven 3.9 이상 (백엔드 직접 실행 시)
+- Node.js 22, pnpm 9 이상 (프런트엔드 직접 빌드 시)
+
+### Docker Compose로 실행
 
 ```powershell
+git clone https://github.com/boclair98/saldobook.git
+cd saldobook
 Copy-Item .env.example .env
 ```
 
-`.env`에 본인이 발급받은 개발용 값을 입력합니다. `.env`는 Git에서 제외됩니다.
-
-### 2. OAuth Redirect URI 등록
-
-로컬 HTTPS 프록시를 사용하지 않는 경우 OAuth 제공자가 HTTP localhost 콜백을 허용하는지 확인해야 합니다.
-
-```text
-Google: {PUBLIC_URL}/api/auth/google/callback
-Kakao:  {PUBLIC_URL}/api/auth/kakao/callback
-KFTC:   {PUBLIC_URL}/api/openbanking/callback
-```
-
-### 3. Docker Compose 실행
+`.env`에 OAuth 개발용 값을 입력한 뒤 실행합니다.
 
 ```powershell
 docker compose up --build
 ```
 
-- 웹: `http://localhost:3000`
-- API 상태: `http://localhost:8000/actuator/health`
+실행 주소:
+
+- Web: <http://localhost:3000>
+- API health: <http://localhost:8000/actuator/health>
 - PostgreSQL: `localhost:5432`
+
+로컬 OAuth callback은 다음 주소를 각 제공자 콘솔에 등록합니다.
+
+```text
+Google: http://localhost:3000/api/auth/google/callback
+Kakao:  http://localhost:3000/api/auth/kakao/callback
+```
+
+### 검증 명령
+
+```powershell
+# Frontend
+cd frontend
+pnpm install --frozen-lockfile
+pnpm build
+
+# Backend
+cd ..\backend
+mvn test
+mvn package
+```
 
 ## 환경 변수
 
+실제 비밀값은 `.env` 또는 배포 플랫폼의 Secret에만 저장합니다. `.env`는 Git에 커밋하지 않습니다.
+
 | 변수 | 필수 | 설명 |
 |---|---:|---|
-| `PUBLIC_URL` | Y | 외부에서 접근하는 서비스 원본 URL |
-| `GOOGLE_CLIENT_ID` | Y | Google OAuth 웹 클라이언트 ID |
-| `GOOGLE_CLIENT_SECRET` | Y | Google OAuth Client Secret |
-| `KAKAO_REST_API_KEY` | Y | 카카오 REST API 키 |
-| `KAKAO_CLIENT_SECRET` | Y | 카카오 로그인 Client Secret |
-| `OPEN_BANKING_ENABLED` | N | 계좌 연동 기능 플래그. 기본값 `false` |
-| `OPEN_BANKING_CLIENT_ID` | 계좌 연동 시 | 금융결제원 Client ID |
-| `OPEN_BANKING_CLIENT_SECRET` | 계좌 연동 시 | 금융결제원 Client Secret |
-| `OPEN_BANKING_REDIRECT_URI` | 계좌 연동 시 | 금융결제원 OAuth Callback URL |
-| `OPEN_BANKING_USE_ORG_CODE` | 계좌 연동 시 | 금융결제원 이용기관코드 10자리 |
-| `TOKEN_ENCRYPTION_KEY` | Y | Base64 인코딩된 무작위 32바이트 키 |
-| `OPEN_BANKING_AUTHORIZE_URL` | N | 기본값은 금융결제원 테스트 인가 URL |
-| `OPEN_BANKING_TOKEN_URL` | N | 기본값은 금융결제원 테스트 토큰 URL |
-| `OPEN_BANKING_API_BASE_URL` | N | 기본값은 금융결제원 테스트 API v2.0 |
-| `DATABASE_URL` | Y | PostgreSQL JDBC URL |
-| `DATABASE_USERNAME` | Y | DB 사용자 |
-| `DATABASE_PASSWORD` | Y | DB 비밀번호 |
+| `PUBLIC_URL` | 예 | 외부에서 접근하는 서비스 URL |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | 예 | Google OAuth 클라이언트 |
+| `KAKAO_REST_API_KEY` / `KAKAO_CLIENT_SECRET` | 예 | Kakao OAuth 애플리케이션 |
+| `DATABASE_URL` | 예 | PostgreSQL JDBC URL |
+| `DATABASE_USERNAME` / `DATABASE_PASSWORD` | 예 | PostgreSQL 접속 계정 |
+| `TOKEN_ENCRYPTION_KEY` | 예 | 금융 토큰용 Base64 인코딩 32바이트 키 |
+| `SESSION_COOKIE_SECURE` | 배포 시 | HTTPS 배포에서는 `true` |
+| `OPEN_BANKING_ENABLED` | 아니요 | 기본값 `false`; 승인된 환경에서만 `true` |
+| `OPEN_BANKING_CLIENT_ID` / `OPEN_BANKING_CLIENT_SECRET` | 선택 | 금융결제원 Client ID·Secret |
+| `OPEN_BANKING_REDIRECT_URI` | 선택 | 금융결제원 OAuth callback |
+| `OPEN_BANKING_USE_ORG_CODE` | 선택 | 금융결제원 이용기관코드 10자리 |
+| `OPEN_BANKING_AUTHORIZE_URL` | 선택 | 금융결제원 인가 URL |
+| `OPEN_BANKING_TOKEN_URL` | 선택 | 금융결제원 토큰 URL |
+| `OPEN_BANKING_API_BASE_URL` | 선택 | 금융결제원 API 기본 URL |
 
-암호화 키 예시 생성:
+암호화 키 생성 예시:
 
 ```powershell
 $bytes = New-Object byte[] 32
@@ -186,98 +216,63 @@ $bytes = New-Object byte[] 32
 [Convert]::ToBase64String($bytes)
 ```
 
-생성 결과는 비밀 저장소에만 보관하고 GitHub, 문서, 메신저에 올리지 않습니다.
+생성된 키는 GitHub, 이슈, 메신저에 올리지 않습니다.
 
-## 금융결제원 테스트베드(선택 기능)
+## 보안과 데이터 보호
 
-계좌 연동은 기본적으로 비활성화되어 있습니다. `OPEN_BANKING_ENABLED=true`로 켠 경우에도 테스트베드에서는 실제 은행 잔액이 아니라 금융결제원 포털에 등록한 테스트 응답 데이터가 반환됩니다.
+- 모든 가계부 데이터는 로그인한 사용자 ID를 기준으로 조회·변경합니다.
+- 세션 쿠키는 `HttpOnly`, `Secure`, `SameSite=Lax` 정책을 사용합니다.
+- POST·PUT·PATCH·DELETE 요청은 애플리케이션 전용 요청 헤더를 검증합니다.
+- 금융 액세스 토큰과 리프레시 토큰은 AES-256-GCM으로 암호화합니다.
+- 계좌 비밀번호와 소셜 로그인 비밀번호를 수집하지 않습니다.
+- 화면에는 금융결제원이 제공한 마스킹 계좌번호만 노출합니다.
+- 외부 거래 식별값을 이용해 동일 거래의 중복 저장을 방지합니다.
 
-발급 화면, 등록할 URL과 운영 전환 조건은 [금융 연동 설정 가이드](docs/FINANCIAL_INTEGRATION.md)에 정리했습니다.
-
-1. 오픈뱅킹 서비스 신청 및 `이용 중` 확인
-2. API Key 생성
-3. 오픈뱅킹 서비스에 API Key 등록
-4. Callback URL 등록
-5. 테스트 정보 관리 권한 활성화
-6. 사용자정보·잔액·거래내역 테스트 응답 등록
-7. 살도에서 계좌 연결 후 전체 계좌 새로고침
-
-운영 전환 시 테스트 URL 세 개를 금융결제원이 안내한 운영 URL로 교체하고 운영 Client ID/Secret을 별도 비밀값으로 등록해야 합니다.
-
-현재 서비스 배포본은 수동 입력 가계부 모드입니다. 계좌 기능은 `OPEN_BANKING_ENABLED=true`일 때만 화면에 나타나며, 입금·출금이체(결제)는 구현되어 있지 않습니다. 실제 잔액과 거래내역은 금융결제원의 운영 이용기관 승인 및 조회 API 권한이 있어야 사용할 수 있습니다.
-
-## 데이터 보호
-
-- 모든 가계부 조회와 변경은 로그인된 사용자 ID로 제한합니다.
-- 세션 쿠키는 `HttpOnly`, `Secure`, `SameSite=Lax`로 설정합니다.
-- 금융 액세스 토큰과 리프레시 토큰은 AES-256-GCM으로 암호화해 저장합니다.
-- 계좌 비밀번호, 실계좌번호, 소셜 로그인 비밀번호는 수집하지 않습니다.
-- 계좌번호는 금융결제원이 제공한 마스킹 값만 화면에 노출합니다.
-- Secret은 코드나 Git 이력에 저장하지 않습니다.
-- POST·PUT·PATCH·DELETE 요청은 애플리케이션 전용 헤더를 검증해 교차 사이트 요청 위조를 차단합니다.
+금융결제원 연동을 활성화하려면 [금융 연동 설정 가이드](docs/FINANCIAL_INTEGRATION.md)를 먼저 확인해야 합니다. 테스트베드 응답은 실제 은행 데이터가 아니며, 운영망 사용에는 별도의 이용기관 승인·계약·보안 점검이 필요합니다.
 
 ## 배포
 
-`coders.yaml`은 coders.kr 멀티 서비스 배포 구성을 정의합니다.
+`coders.yaml`에 coders.kr 배포 구성을 정의합니다.
 
-- `web`: 정적 Next.js 산출물을 제공하는 nginx
-- `api`: Spring Boot 애플리케이션
-- `db`: 관리형 PostgreSQL
-- 실행 모드: 자체 OAuth를 사용하는 `standalone`
+| 서비스 | 역할 |
+|---|---|
+| `web` | Next.js 정적 산출물을 nginx로 제공하고 `/api`를 프록시 |
+| `api` | Spring Boot 애플리케이션 |
+| `db` | 관리형 PostgreSQL |
 
-배포 환경에는 위 환경 변수를 플랫폼의 Secret/환경 변수 관리 기능으로 등록해야 합니다. 배포 후 다음을 점검합니다.
+배포 환경에는 `.env`의 값을 플랫폼 Secret으로 등록합니다. 배포 후 다음 흐름을 확인합니다.
 
-```text
-GET /actuator/health
-GET /api/auth/me
-Google 로그인 및 로그아웃
-카카오 로그인 및 로그아웃
-오픈뱅킹 OAuth state 검증
-계좌 목록·잔액·거래내역 부분 실패
-사용자 A/B 데이터 격리
-세션 만료 및 재로그인
-개별/전체 연결 해제
-DB 백업과 복원
-```
+- `/actuator/health` 응답
+- Google·카카오 로그인과 로그아웃
+- 사용자 A/B 데이터 격리
+- 거래 등록·삭제·페이지네이션
+- 예산 저장과 통계 집계
+- 세션 만료 후 재로그인
+- 오픈뱅킹을 켠 경우 OAuth state 검증과 부분 실패 처리
 
-## 운영 전 체크리스트
+## 진행 상황
 
-- [ ] 개인정보처리방침과 이용약관 게시
-- [ ] 금융결제원 이용기관 운영 승인 및 계약
-- [ ] 운영 OAuth 앱 검수와 Redirect URI 고정
-- [ ] Secret 회전 절차와 접근 통제
-- [ ] PostgreSQL 자동 백업 및 복구 훈련
-- [ ] 오류·감사 로그의 개인정보 마스킹
-- [ ] 장애 알림, 지표, 상태 페이지
-- [ ] 사용자 탈퇴 시 데이터·토큰 파기
-- [ ] 동의 철회와 금융결제원 해지 절차
-- [ ] 취약점 점검과 의존성 업데이트 정책
+- [x] Google·카카오 로그인
+- [x] 사용자별 가계부 데이터 격리
+- [x] 수입·지출 및 월 예산 관리
+- [x] 검색·필터·CSV 내보내기
+- [x] 카테고리 분석과 최근 6개월 추이
+- [x] DB 집계 기반 통계와 거래 페이지네이션
+- [x] 선택적 금융결제원 오픈뱅킹 모듈
+- [ ] 개인정보처리방침·이용약관·회원 탈퇴 화면
+- [ ] Android·iOS 앱 패키징 및 스토어 출시
+- [ ] 금융결제원 운영 이용기관 승인 후 실계좌 조회
 
-## 검증
+## 문서
 
-프런트엔드:
-
-```powershell
-cd frontend
-pnpm install --frozen-lockfile
-pnpm build
-```
-
-백엔드:
-
-```powershell
-cd backend
-mvn test
-mvn package
-```
-
-전체 컨테이너:
-
-```powershell
-docker compose build
-docker compose up
-```
+- [운영 가이드](README-SALDO.md)
+- [금융결제원 연동 설정](docs/FINANCIAL_INTEGRATION.md)
+- [보안 정책](SECURITY.md)
+- [coders.kr 배포 설정](coders.yaml)
+- [CI workflow](.github/workflows/ci.yml)
 
 ## 라이선스
 
-소스는 공개되어 있지만 별도 오픈소스 라이선스는 부여하지 않았습니다. 재사용과 배포에는 저작권자의 별도 허가가 필요합니다.
+현재 별도 오픈소스 라이선스를 부여하지 않았습니다. 재사용·배포·상업적 이용은 저작권자의 사전 허가가 필요합니다.
+
+
