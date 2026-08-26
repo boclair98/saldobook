@@ -34,6 +34,21 @@ public interface TransactionRepository extends JpaRepository<LedgerTransaction, 
   );
 
   @Query(value = """
+    select
+      coalesce(sum(amount) filter (where transaction_type = 'INCOME'), 0)::bigint as income,
+      coalesce(sum(amount) filter (where transaction_type = 'EXPENSE'), 0)::bigint as expense
+    from transactions
+    where user_id = :userId
+      and transacted_at >= :fromTime
+      and transacted_at < :toTime
+    """, nativeQuery = true)
+  PeriodTotal sumTotals(
+    @Param("userId") UUID userId,
+    @Param("fromTime") Instant fromTime,
+    @Param("toTime") Instant toTime
+  );
+
+  @Query(value = """
     select category as category, coalesce(sum(amount), 0)::bigint as amount
     from transactions
     where user_id = :userId
@@ -69,6 +84,11 @@ public interface TransactionRepository extends JpaRepository<LedgerTransaction, 
   interface CategoryTotal {
     String getCategory();
     long getAmount();
+  }
+
+  interface PeriodTotal {
+    long getIncome();
+    long getExpense();
   }
 
   interface MonthlyTotal {

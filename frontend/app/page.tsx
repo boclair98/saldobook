@@ -4,8 +4,10 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Bell,
+  CircleCheck,
   ChevronRight,
   CircleHelp,
+  Compass,
   CreditCard,
   Download,
   Landmark,
@@ -20,8 +22,10 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  Sparkles,
   Target,
   Trash2,
+  TriangleAlert,
   TrendingUp,
   WalletCards,
   X,
@@ -64,6 +68,31 @@ type Overview = {
   monthly: { month: string; income: number; expense: number }[];
 };
 
+type NavigatorStatus = "ON_TRACK" | "WATCH" | "OVER_BUDGET" | "NEEDS_DATA";
+type ForecastSource = "CURRENT_PACE" | "HISTORICAL_AVERAGE" | "NO_DATA";
+
+type SpendingNavigator = {
+  month: string;
+  income: number;
+  expense: number;
+  budget: number;
+  limitAmount: number;
+  limitLabel: string;
+  remainingBase: number;
+  safeDaily: number;
+  projectedExpense: number;
+  projectedBalance: number;
+  remainingDays: number;
+  elapsedDays: number;
+  pacePercent: number;
+  status: NavigatorStatus;
+  message: string;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  historicalMonths: number;
+  forecastSource: ForecastSource;
+  historicalAverageExpense: number;
+};
+
 const emptyOverview: Overview = {
   income: 0,
   expense: 0,
@@ -71,6 +100,28 @@ const emptyOverview: Overview = {
   categories: {},
   transactionCount: 0,
   monthly: [],
+};
+
+const emptyNavigator: SpendingNavigator = {
+  month: new Date().toISOString().slice(0, 7),
+  income: 0,
+  expense: 0,
+  budget: 0,
+  limitAmount: 0,
+  limitLabel: "예산 또는 수입",
+  remainingBase: 0,
+  safeDaily: 0,
+  projectedExpense: 0,
+  projectedBalance: 0,
+  remainingDays: 1,
+  elapsedDays: 1,
+  pacePercent: 0,
+  status: "NEEDS_DATA",
+  message: "예산이나 수입을 한 번 기록하면 오늘 써도 되는 금액을 계산해 드려요.",
+  confidence: "LOW",
+  historicalMonths: 0,
+  forecastSource: "NO_DATA",
+  historicalAverageExpense: 0,
 };
 
 type Budget = {
@@ -127,6 +178,7 @@ async function responseMessage(response: Response, fallback: string) {
 export default function HomePage() {
   const [auth, setAuth] = useState<Auth | null>(null);
   const [overview, setOverview] = useState<Overview>(emptyOverview);
+  const [navigator, setNavigator] = useState<SpendingNavigator>(emptyNavigator);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [hasMoreTransactions, setHasMoreTransactions] = useState(false);
   const [transactionPage, setTransactionPage] = useState(0);
@@ -148,6 +200,7 @@ export default function HomePage() {
   const [modal, setModal] = useState<"bank" | "add" | "budget" | null>(null);
   const [filter, setFilter] = useState<"all" | "EXPENSE" | "INCOME">("all");
   const [search, setSearch] = useState("");
+  const [scenarioAmount, setScenarioAmount] = useState(0);
   const [mobileNav, setMobileNav] = useState(false);
   const [toast, setToast] = useState("");
   const [saving, setSaving] = useState(false);
@@ -155,18 +208,20 @@ export default function HomePage() {
   const [bankingError, setBankingError] = useState("");
 
   const loadPrivateData = useCallback(async () => {
-    const [overviewResult, transactionResult, budgetResult, bankingResult] = await Promise.allSettled([
+    const [overviewResult, navigatorResult, transactionResult, budgetResult, bankingResult] = await Promise.allSettled([
       fetch("/api/overview", { credentials: "include", cache: "no-store" }),
+      fetch("/api/navigator", { credentials: "include", cache: "no-store" }),
       fetch("/api/transactions/page?page=0&size=50", { credentials: "include", cache: "no-store" }),
       fetch("/api/budget", { credentials: "include", cache: "no-store" }),
       fetch("/api/openbanking/accounts", { credentials: "include", cache: "no-store" }),
     ]);
 
-    const coreResults = [overviewResult, transactionResult, budgetResult];
+    const coreResults = [overviewResult, navigatorResult, transactionResult, budgetResult];
     if (coreResults.some((result) => result.status === "rejected" || !result.value.ok)) {
       throw new Error("가계부 데이터를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.");
     }
     if (overviewResult.status === "fulfilled") setOverview(await overviewResult.value.json());
+    if (navigatorResult.status === "fulfilled") setNavigator(await navigatorResult.value.json());
     if (transactionResult.status === "fulfilled") {
       const transactionPageResult: TransactionPage = await transactionResult.value.json();
       setTransactions(transactionPageResult.items);
@@ -271,6 +326,22 @@ export default function HomePage() {
     ...overview.monthly.flatMap((point) => [point.income, point.expense]),
   );
 
+  const scenarioRemainingBase = Math.max(0, navigator.remainingBase - scenarioAmount);
+  const scenarioDaily = Math.floor(scenarioRemainingBase / Math.max(1, navigator.remainingDays));
+  const scenarioBalance = navigator.projectedBalance - scenarioAmount;
+  const navigatorStatusLabels: Record<NavigatorStatus, string> = {
+    ON_TRACK: "안정권",
+    WATCH: "주의 필요",
+    OVER_BUDGET: "기준 초과",
+    NEEDS_DATA: "기록이 필요해요",
+  };
+  const forecastSourceLabels: Record<ForecastSource, string> = {
+    CURRENT_PACE: "이번 달 지출 속도",
+    HISTORICAL_AVERAGE: "최근 기록 평균",
+    NO_DATA: "기록 대기 중",
+  };
+  const confidenceLabels = { HIGH: "높음", MEDIUM: "보통", LOW: "낮음" };
+
   function flash(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(""), 3000);
@@ -315,7 +386,7 @@ export default function HomePage() {
       });
       if (response.ok) {
         const result: { authorizeUrl: string } = await response.json();
-        window.location.href = result.authorizeUrl;
+        window.location.assign(result.authorizeUrl);
         return;
       }
       if (response.status === 409) {
@@ -495,6 +566,7 @@ export default function HomePage() {
         </div>
         <nav aria-label="주요 메뉴">
           <a className="nav-item active" href="#dashboard"><LayoutGrid size={18} /> 한눈에 보기</a>
+          <a className="nav-item" href="#navigator"><Compass size={18} /> 생활비 내비게이터</a>
           <a className="nav-item" href="#transactions"><WalletCards size={18} /> 거래 내역</a>
           <a className="nav-item" href="#budget"><Target size={18} /> 이번 달</a>
           {banking.enabled && <a className="nav-item" href="#assets"><Landmark size={18} /> 연결 자산</a>}
@@ -583,6 +655,80 @@ export default function HomePage() {
               <p>{budget.amount > 0 ? `${money(budget.amount)} 중 ${money(overview.expense)} 사용` : "월 지출 목표를 정하고 초과 여부를 확인할 수 있어요."}</p>
             </div>
           </article>
+        </section>
+
+        <section className="navigator-panel" id="navigator" aria-label="생활비 내비게이터">
+          <div className="navigator-main">
+            <div className="panel-head">
+              <div>
+                <span className="eyebrow"><Compass size={12} /> 생활비 내비게이터</span>
+                <h2>오늘 써도 되는 돈</h2>
+              </div>
+              <span className={`navigator-status ${navigator.status.toLowerCase()}`}>
+                {navigator.status === "ON_TRACK" ? <CircleCheck size={13} /> : navigator.status === "NEEDS_DATA" ? <Sparkles size={13} /> : <TriangleAlert size={13} />}
+                {navigatorStatusLabels[navigator.status]}
+              </span>
+            </div>
+            <div className="navigator-value">
+              <strong>{navigator.limitAmount > 0 ? money(navigator.safeDaily) : "계산 준비 중"}</strong>
+              <span>오늘의 안심 사용액</span>
+            </div>
+            <p className="navigator-message">{navigator.message}</p>
+            <div className="navigator-meter" aria-label={`기준액의 ${navigator.pacePercent}% 사용`}>
+              <div><span style={{ width: `${Math.min(100, navigator.pacePercent)}%` }} /></div>
+              <span>{navigator.pacePercent}% 사용</span>
+            </div>
+            <div className="navigator-stats">
+              <div><small>월말 예상 지출</small><b>{money(navigator.projectedExpense)}</b></div>
+              <div><small>{navigator.limitLabel}</small><b>{navigator.limitAmount > 0 ? money(navigator.limitAmount) : "기록 필요"}</b></div>
+              <div><small>남은 기간</small><b>{navigator.remainingDays === 1 ? "오늘" : `D-${navigator.remainingDays}`}</b></div>
+            </div>
+            <div className="navigator-footnote">
+              <span>{forecastSourceLabels[navigator.forecastSource]}</span>
+              <span>예측 신뢰도 {confidenceLabels[navigator.confidence]}</span>
+              <span>참고용 예측 · 금융 조언 아님</span>
+            </div>
+          </div>
+
+          <div className="scenario-box">
+            <div className="scenario-head">
+              <span><Sparkles size={14} /> 가상 지출 실험</span>
+              <small>기록에는 저장되지 않아요</small>
+            </div>
+            <label htmlFor="scenario-amount">이번 주에 추가로 쓸 금액</label>
+            <input
+              id="scenario-amount"
+              className="scenario-range"
+              type="range"
+              min="0"
+              max={Math.max(1_000_000, navigator.limitAmount)}
+              step={10000}
+              value={scenarioAmount}
+              onChange={(event) => setScenarioAmount(Number(event.target.value))}
+            />
+            <div className="scenario-input-row">
+              <b>{money(scenarioAmount)}</b>
+              <input
+                aria-label="가상 지출 금액"
+                type="number"
+                min="0"
+                max="10000000"
+                step="10000"
+                value={scenarioAmount}
+                onChange={(event) => {
+                  const amount = Number(event.target.value);
+                  setScenarioAmount(Number.isFinite(amount) ? Math.min(10_000_000, Math.max(0, amount)) : 0);
+                }}
+              />
+            </div>
+            <div className={`scenario-result ${scenarioBalance < 0 ? "danger" : ""}`}>
+              {navigator.limitAmount > 0
+                ? scenarioAmount > 0
+                  ? <><b>{scenarioBalance >= 0 ? "월말에도 " : "월말에 "}{money(Math.abs(scenarioBalance))}{scenarioBalance >= 0 ? " 정도 남아요" : "가 부족해져요"}</b><span>남은 기간 하루 한도는 {money(scenarioDaily)}로 바뀝니다.</span></>
+                  : <><b>큰 지출을 넣어보고 월말 여유를 확인해 보세요.</b><span>예상치는 저장되지 않는 안전한 실험입니다.</span></>
+                : <><b>예산 또는 수입을 먼저 기록해 주세요.</b><span>기준액이 생기면 바로 시뮬레이션할 수 있어요.</span></>}
+            </div>
+          </div>
         </section>
 
         <section className="content-grid">
