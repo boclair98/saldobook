@@ -3,8 +3,13 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "살도 — 돈의 흐름이 보이는 가계부",
-  description: "수입, 지출, 예산과 연결 자산을 한눈에 관리하는 생활 금융 서비스",
+  title: "살도 | 오늘 써도 되는 생활비",
+  description: "내가 기록한 돈의 흐름으로 오늘의 안심 사용액과 월말 계획을 확인하는 개인 가계부.",
+  keywords: ["가계부", "생활비", "예산 관리", "지출 기록", "개인 금융"],
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
