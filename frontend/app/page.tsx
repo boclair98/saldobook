@@ -3,7 +3,6 @@
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  Bell,
   CircleCheck,
   ChevronRight,
   CircleHelp,
@@ -19,7 +18,9 @@ import {
   Menu,
   Plus,
   PiggyBank,
+  RefreshCw,
   Search,
+  SearchX,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -30,7 +31,7 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OpenBankingGuide } from "@/components/OpenBankingGuide";
 
 type Auth = {
@@ -165,6 +166,7 @@ const categoryColors = ["#ef7b45", "#e9b949", "#2f8f68", "#5c7caa", "#a78b7a"];
 const money = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 const signOutUrl = "/api/auth/logout";
 const writeHeaders = { "X-Saldo-Request": "web" };
+const dateInputValue = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
 
 async function responseMessage(response: Response, fallback: string) {
   try {
@@ -197,46 +199,77 @@ export default function HomePage() {
     },
     accounts: [],
   });
-  const [modal, setModal] = useState<"bank" | "add" | "budget" | null>(null);
+  const [modal, setModal] = useState<"bank" | "add" | "budget" | "help" | "settings" | null>(null);
   const [filter, setFilter] = useState<"all" | "EXPENSE" | "INCOME">("all");
   const [search, setSearch] = useState("");
   const [scenarioAmount, setScenarioAmount] = useState(0);
   const [mobileNav, setMobileNav] = useState(false);
   const [toast, setToast] = useState("");
   const [saving, setSaving] = useState(false);
+  const [privateLoading, setPrivateLoading] = useState(false);
+  const [dataError, setDataError] = useState("");
+  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
   const [syncIssues, setSyncIssues] = useState<SyncIssue[]>([]);
   const [bankingError, setBankingError] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const modalCloseRef = useRef<HTMLButtonElement>(null);
 
   const loadPrivateData = useCallback(async () => {
-    const [overviewResult, navigatorResult, transactionResult, budgetResult, bankingResult] = await Promise.allSettled([
-      fetch("/api/overview", { credentials: "include", cache: "no-store" }),
-      fetch("/api/navigator", { credentials: "include", cache: "no-store" }),
-      fetch("/api/transactions/page?page=0&size=50", { credentials: "include", cache: "no-store" }),
-      fetch("/api/budget", { credentials: "include", cache: "no-store" }),
-      fetch("/api/openbanking/accounts", { credentials: "include", cache: "no-store" }),
-    ]);
+    setPrivateLoading(true);
+    setDataError("");
+    try {
+      const [overviewResult, navigatorResult, transactionResult, budgetResult, bankingResult] = await Promise.allSettled([
+        fetch("/api/overview", { credentials: "include", cache: "no-store" }),
+        fetch("/api/navigator", { credentials: "include", cache: "no-store" }),
+        fetch("/api/transactions/page?page=0&size=50", { credentials: "include", cache: "no-store" }),
+        fetch("/api/budget", { credentials: "include", cache: "no-store" }),
+        fetch("/api/openbanking/accounts", { credentials: "include", cache: "no-store" }),
+      ]);
 
-    const coreResults = [overviewResult, navigatorResult, transactionResult, budgetResult];
-    if (coreResults.some((result) => result.status === "rejected" || !result.value.ok)) {
-      throw new Error("가계부 데이터를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.");
-    }
-    if (overviewResult.status === "fulfilled") setOverview(await overviewResult.value.json());
-    if (navigatorResult.status === "fulfilled") setNavigator(await navigatorResult.value.json());
-    if (transactionResult.status === "fulfilled") {
-      const transactionPageResult: TransactionPage = await transactionResult.value.json();
-      setTransactions(transactionPageResult.items);
-      setTransactionPage(transactionPageResult.page);
-      setHasMoreTransactions(transactionPageResult.hasNext);
-    }
-    if (budgetResult.status === "fulfilled") setBudget(await budgetResult.value.json());
+      const coreResults = [overviewResult, navigatorResult, transactionResult, budgetResult];
+      if (coreResults.some((result) => result.status === "rejected" || !result.value.ok)) {
+        throw new Error("가계부 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      }
+      if (overviewResult.status === "fulfilled") setOverview(await overviewResult.value.json());
+      if (navigatorResult.status === "fulfilled") setNavigator(await navigatorResult.value.json());
+      if (transactionResult.status === "fulfilled") {
+        const transactionPageResult: TransactionPage = await transactionResult.value.json();
+        setTransactions(transactionPageResult.items);
+        setTransactionPage(transactionPageResult.page);
+        setHasMoreTransactions(transactionPageResult.hasNext);
+      }
+      if (budgetResult.status === "fulfilled") setBudget(await budgetResult.value.json());
 
-    if (bankingResult.status === "fulfilled" && bankingResult.value.ok) {
-      setBanking(await bankingResult.value.json());
-      setBankingError("");
-    } else {
-      setBankingError("계좌 서비스에 일시적으로 연결하지 못했습니다. 로그인과 가계부 데이터는 정상적으로 사용할 수 있어요.");
+      if (bankingResult.status === "fulfilled" && bankingResult.value.ok) {
+        setBanking(await bankingResult.value.json());
+        setBankingError("");
+      } else {
+        setBankingError("계좌 서비스에 일시적으로 연결하지 못했습니다. 로그인과 가계부 데이터는 정상적으로 사용할 수 있어요.");
+      }
+      setLastLoadedAt(new Date());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "가계부 데이터를 불러오지 못했습니다.";
+      setDataError(message);
+      throw error;
+    } finally {
+      setPrivateLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!modal) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    modalCloseRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setModal(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [modal]);
 
   async function loadMoreTransactions() {
     if (loadingMoreTransactions || !hasMoreTransactions) return;
@@ -270,9 +303,9 @@ export default function HomePage() {
         if (!active) return;
         setAuth(me);
         const loginResult = new URLSearchParams(window.location.search).get("login");
-        if (loginResult) {
+        if (loginResult === "cancelled" || loginResult === "error") {
           window.history.replaceState({}, "", window.location.pathname);
-          setToast("로그인이 취소되었습니다.");
+          setToast(loginResult === "cancelled" ? "로그인을 취소했어요. 원할 때 다시 시작할 수 있습니다." : "로그인에 실패했어요. 잠시 후 다시 시도해 주세요.");
           window.setTimeout(() => setToast(""), 3000);
         }
         if (me.authenticated) {
@@ -341,6 +374,21 @@ export default function HomePage() {
     NO_DATA: "기록 대기 중",
   };
   const confidenceLabels = { HIGH: "높음", MEDIUM: "보통", LOW: "낮음" };
+  const needsSetup = overview.transactionCount === 0 && budget.amount === 0;
+
+  function focusTransactions() {
+    document.getElementById("transactions")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => searchInputRef.current?.focus(), 250);
+  }
+
+  function refreshPrivateData() {
+    void loadPrivateData().catch(() => undefined);
+  }
+
+  function showNavigatorInsight() {
+    document.getElementById("navigator")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    flash(navigator.message);
+  }
 
   function flash(message: string) {
     setToast(message);
@@ -362,7 +410,10 @@ export default function HomePage() {
           category: String(data.get("category")),
           amount: Number(data.get("amount")),
           type: String(data.get("type")),
-          transactedAt: new Date().toISOString(),
+          transactedAt: (() => {
+            const enteredDate = String(data.get("transactedAt") || "");
+            return enteredDate ? new Date(`${enteredDate}T12:00:00+09:00`).toISOString() : new Date().toISOString();
+          })(),
         }),
       });
       if (!response.ok) throw new Error("저장하지 못했습니다.");
@@ -480,17 +531,21 @@ export default function HomePage() {
 
   async function deleteTransaction(transactionId: string) {
     if (!window.confirm("이 거래를 삭제할까요? 삭제 후에는 되돌릴 수 없습니다.")) return;
-    const response = await fetch(`/api/transactions/${transactionId}`, {
-      method: "DELETE",
-      credentials: "include",
-      headers: writeHeaders,
-    });
-    if (!response.ok) {
-      flash("거래를 삭제하지 못했습니다.");
-      return;
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/transactions/${transactionId}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: writeHeaders,
+      });
+      if (!response.ok) throw new Error(await responseMessage(response, "거래를 삭제하지 못했습니다."));
+      await loadPrivateData();
+      flash("거래를 삭제했습니다.");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "거래를 삭제하지 못했습니다.");
+    } finally {
+      setSaving(false);
     }
-    await loadPrivateData();
-    flash("거래를 삭제했습니다.");
   }
 
   async function saveBudget(event: FormEvent<HTMLFormElement>) {
@@ -510,6 +565,7 @@ export default function HomePage() {
       });
       if (!response.ok) throw new Error("예산을 저장하지 못했습니다.");
       setBudget(await response.json());
+      await loadPrivateData();
       setModal(null);
       flash("이번 달 예산을 저장했어요.");
     } catch (error) {
@@ -578,8 +634,8 @@ export default function HomePage() {
           <p>모든 거래는 로그인한 사용자 ID로 분리해 저장합니다.</p>
         </div>
         <nav className="nav-bottom">
-          <button className="nav-item"><CircleHelp size={18} /> 도움말</button>
-          <button className="nav-item"><Settings size={18} /> 설정</button>
+          <button className="nav-item" onClick={() => setModal("help")}><CircleHelp size={18} /> 도움말</button>
+          <button className="nav-item" onClick={() => setModal("settings")}><Settings size={18} /> 설정</button>
         </nav>
         <a className="profile" href={signOutUrl}>
           <span className="avatar">회</span>
@@ -588,7 +644,7 @@ export default function HomePage() {
         </a>
       </aside>
 
-      <main className="main" id="dashboard">
+      <main className="main" id="dashboard" aria-busy={privateLoading}>
         <header className="topbar">
           <button className="icon-button mobile-menu" aria-label="메뉴 열기" onClick={() => setMobileNav(true)}>
             <Menu size={20} />
@@ -598,16 +654,47 @@ export default function HomePage() {
             <h1>내 돈의 흐름을 한눈에 확인하세요.</h1>
           </div>
           <div className="top-actions">
-            <button className="icon-button" aria-label="검색"><Search size={19} /></button>
-            <button className="icon-button notification" aria-label="알림"><Bell size={19} /><i /></button>
+            <button className="icon-button" onClick={focusTransactions} aria-label="거래 검색으로 이동" title="거래 검색"><Search size={19} /></button>
+            <button className="icon-button notification" onClick={showNavigatorInsight} aria-label="오늘의 생활비 인사이트" title="오늘의 생활비 인사이트"><Sparkles size={18} /></button>
+            <button className="icon-button refresh-button" onClick={refreshPrivateData} disabled={privateLoading} aria-label="데이터 새로고침" title="데이터 새로고침">
+              <RefreshCw size={18} className={privateLoading ? "spin" : ""} />
+            </button>
             <button className="primary-button" onClick={() => setModal("add")}><Plus size={18} /> 내역 추가</button>
           </div>
         </header>
+
+        <div className="topbar-meta" aria-live="polite">
+          <span>{privateLoading ? "개인 데이터를 확인하고 있어요…" : lastLoadedAt ? `마지막 확인 ${lastLoadedAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "개인 데이터 준비 중"}</span>
+          {dataError && <button onClick={refreshPrivateData}>다시 시도</button>}
+        </div>
 
         <section className="privacy-status">
           <LockKeyhole size={15} />
           <span>현재 화면의 금액과 거래는 개인 ID <b>{auth.userKey}</b>에만 연결되어 있습니다.</span>
         </section>
+
+        {dataError && (
+          <section className="data-error-banner" role="alert">
+            <span><TriangleAlert size={17} /></span>
+            <div><b>데이터를 불러오지 못했어요.</b><p>{dataError}</p></div>
+            <button onClick={refreshPrivateData} disabled={privateLoading}>{privateLoading ? "확인 중…" : "다시 시도"}</button>
+          </section>
+        )}
+
+        {needsSetup && (
+          <section className="setup-panel" aria-label="처음 시작하기">
+            <div className="setup-copy">
+              <span className="eyebrow"><Sparkles size={12} /> 처음 오셨나요?</span>
+              <h2>이번 달을 가볍게 시작해 볼까요?</h2>
+              <p>샘플 숫자 없이, 내 기록이 쌓이는 순서대로 살도가 맞춰집니다. 세 가지만 하면 첫 화면이 완성돼요.</p>
+            </div>
+            <div className="setup-steps">
+              <button onClick={() => setModal("budget")}><span>1</span><strong>예산 정하기</strong><small>이번 달 기준액 만들기</small><ChevronRight size={15} /></button>
+              <button onClick={() => setModal("add")}><span>2</span><strong>첫 기록 남기기</strong><small>수입 또는 지출 한 건</small><ChevronRight size={15} /></button>
+              <button onClick={() => document.getElementById("navigator")?.scrollIntoView({ behavior: "smooth" })}><span>3</span><strong>오늘 한도 보기</strong><small>내비게이터에서 확인</small><ChevronRight size={15} /></button>
+            </div>
+          </section>
+        )}
 
         <section className="summary-grid" aria-label="개인 자산 요약">
           <article className="balance-card">
@@ -757,7 +844,7 @@ export default function HomePage() {
               <span className="data-badge">개인 데이터</span>
             </div>
             {categoryEntries.length === 0 ? (
-              <EmptyState title="아직 분석할 지출이 없어요." description="첫 지출을 추가하면 카테고리 분석이 시작됩니다." onClick={() => setModal("add")} />
+              <EmptyState title="아직 분석할 지출이 없어요." description="첫 지출을 추가하면 카테고리 분석이 시작됩니다." actionLabel="첫 지출 추가" onClick={() => setModal("add")} />
             ) : (
               <div className="category-bars">
                 {categoryEntries.map(([category, amount], index) => {
@@ -781,16 +868,26 @@ export default function HomePage() {
                 <button className="text-button" onClick={() => setModal("add")}><Plus size={14} /> 추가</button>
               </div>
             </div>
-            <label className="transaction-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="내용이나 카테고리 검색" /></label>
+            <label className="transaction-search"><Search size={15} /><input ref={searchInputRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="내용이나 카테고리 검색" aria-label="거래 내용이나 카테고리 검색" /></label>
             <div className="filter-tabs" role="tablist">
               {(["all", "EXPENSE", "INCOME"] as const).map((item) => (
-                <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>
+                <button key={item} role="tab" aria-selected={filter === item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>
                   {item === "all" ? "전체" : item === "EXPENSE" ? "지출" : "수입"}
                 </button>
               ))}
             </div>
             {visibleTransactions.length === 0 ? (
-              <EmptyState title="저장된 거래가 없습니다." description="가상 내역 없이 깨끗한 상태로 시작합니다." onClick={() => setModal("add")} />
+              transactions.length > 0 ? (
+                <EmptyState
+                  title="조건에 맞는 거래가 없어요."
+                  description="검색어를 지우거나 다른 필터를 선택해 보세요."
+                  actionLabel="필터 초기화"
+                  onClick={() => { setSearch(""); setFilter("all"); }}
+                  icon={<SearchX size={20} />}
+                />
+              ) : (
+                <EmptyState title="저장된 거래가 없습니다." description="내 기록을 추가하면 이곳에서 흐름을 한눈에 볼 수 있어요." onClick={() => setModal("add")} />
+              )
             ) : (
               <div className="transaction-list">
                 {visibleTransactions.map((transaction) => (
@@ -816,14 +913,22 @@ export default function HomePage() {
         <p className="disclaimer">가상 금융 데이터는 표시하지 않습니다. 모든 금액과 거래는 로그인한 계정에 저장한 기록을 기준으로 계산합니다.</p>
       </main>
 
+      <nav className="mobile-bottom-nav" aria-label="빠른 메뉴">
+        <a href="#dashboard"><LayoutGrid size={17} /><span>홈</span></a>
+        <a href="#navigator"><Compass size={17} /><span>내비게이터</span></a>
+        <button onClick={() => setModal("add")}><Plus size={19} /><span>기록</span></button>
+        <a href="#transactions"><WalletCards size={17} /><span>거래</span></a>
+        <a href="#budget"><Target size={17} /><span>예산</span></a>
+      </nav>
+
       {modal && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setModal(null)}>
-          <section className="modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setModal(null)} aria-label="닫기"><X size={20} /></button>
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-description" onMouseDown={(event) => event.stopPropagation()}>
+            <button ref={modalCloseRef} className="modal-close" onClick={() => setModal(null)} aria-label="닫기"><X size={20} /></button>
             {modal === "bank" ? (
               <>
                 <span className="modal-symbol"><Landmark size={22} /></span>
-                <h2>{banking.connected ? "연결 계좌 관리" : "내 계좌 연결하기"}</h2>
+                <h2 id="modal-title">{banking.connected ? "연결 계좌 관리" : "내 계좌 연결하기"}</h2>
                 {banking.testMode && (
                   <div className="test-mode-notice">
                     <b>금융결제원 테스트 모드</b>
@@ -836,7 +941,7 @@ export default function HomePage() {
                     <span>{banking.readiness.message}</span>
                   </div>
                 )}
-                <p>{banking.connected
+                <p id="modal-description">{banking.connected
                   ? "계좌를 더 추가하거나 연결된 계좌의 잔액과 거래내역을 새로고침할 수 있어요."
                   : "금융결제원 인증 화면에서 본인이 직접 동의해야 연결됩니다."}</p>
                 {banking.connected && banking.accounts.length > 0 && (
@@ -896,19 +1001,42 @@ export default function HomePage() {
             ) : modal === "budget" ? (
               <form onSubmit={saveBudget}>
                 <span className="modal-symbol"><PiggyBank size={22} /></span>
-                <h2>이번 달 예산 설정</h2>
-                <p>설정한 예산은 현재 로그인한 계정에만 저장됩니다.</p>
+                <h2 id="modal-title">이번 달 예산 설정</h2>
+                <p id="modal-description">설정한 예산은 현재 로그인한 계정에만 저장됩니다.</p>
                 <label>월<input value={budget.month} disabled /></label>
                 <label>예산 금액<input name="amount" type="number" min="0" max="999999999999" defaultValue={budget.amount || ""} placeholder="예: 2000000" required /></label>
                 <button className="submit-button" type="submit" disabled={saving}>{saving ? "저장 중…" : "예산 저장"}</button>
               </form>
+            ) : modal === "help" ? (
+              <div className="info-modal">
+                <span className="modal-symbol"><CircleHelp size={22} /></span>
+                <h2 id="modal-title">살도 사용법</h2>
+                <p id="modal-description">내 기록이 쌓일수록 오늘의 생활비와 월말 계획이 더 정확해집니다.</p>
+                <ol className="help-list">
+                  <li><span>1</span><div><b>예산 또는 수입을 먼저 정해요</b><small>이번 달 기준액이 있어야 안심 사용액을 계산할 수 있어요.</small></div></li>
+                  <li><span>2</span><div><b>거래는 날짜까지 정확히 남겨요</b><small>지난 거래도 실제 날짜로 입력하면 월별 흐름이 자연스러워집니다.</small></div></li>
+                  <li><span>3</span><div><b>내비게이터를 매일 확인해요</b><small>가상 지출 실험으로 큰 결제 전 월말 여유를 미리 살펴보세요.</small></div></li>
+                </ol>
+                <div className="security-note"><ShieldCheck size={14} /> 샘플 금액은 넣지 않습니다. 화면의 모든 숫자는 로그인한 계정의 저장 기록으로만 계산됩니다.</div>
+              </div>
+            ) : modal === "settings" ? (
+              <div className="info-modal">
+                <span className="modal-symbol"><Settings size={22} /></span>
+                <h2 id="modal-title">설정</h2>
+                <p id="modal-description">개인 데이터와 내보내기를 관리할 수 있습니다.</p>
+                <div className="settings-actions">
+                  <button className="secondary-button" onClick={() => { exportCsv(); setModal(null); }}><Download size={15} /> 거래 CSV 내보내기</button>
+                  <a className="signout-button" href={signOutUrl}><LogOut size={15} /> 로그아웃</a>
+                </div>
+                <div className="security-note"><LockKeyhole size={14} /> 거래와 예산은 개인 ID에만 연결되어 있으며, 살도는 소셜 계정 비밀번호를 저장하지 않습니다.</div>
+              </div>
             ) : (
               <AddTransactionForm onSubmit={addTransaction} saving={saving} />
             )}
           </section>
         </div>
       )}
-      {toast && <div className="toast">{toast}</div>}
+      {toast && <div className="toast" role="status" aria-live="polite">{toast}</div>}
     </div>
   );
 }
@@ -947,13 +1075,13 @@ function LoginGate({ auth }: { auth: Auth }) {
   );
 }
 
-function EmptyState({ title, description, onClick }: { title: string; description: string; onClick: () => void }) {
+function EmptyState({ title, description, actionLabel = "첫 내역 추가", onClick, icon }: { title: string; description: string; actionLabel?: string; onClick: () => void; icon?: ReactNode }) {
   return (
     <div className="empty-state">
-      <span><WalletCards size={20} /></span>
+      <span>{icon ?? <WalletCards size={20} />}</span>
       <b>{title}</b>
       <p>{description}</p>
-      <button onClick={onClick}><Plus size={14} /> 첫 내역 추가</button>
+      <button onClick={onClick}><Plus size={14} /> {actionLabel}</button>
     </div>
   );
 }
@@ -962,12 +1090,13 @@ function AddTransactionForm({ onSubmit, saving }: { onSubmit: (event: FormEvent<
   return (
     <form onSubmit={onSubmit}>
       <span className="modal-symbol"><Plus size={22} /></span>
-      <h2>내역 추가</h2>
-      <p>입력한 내용은 현재 로그인한 개인 계정에만 저장됩니다.</p>
+      <h2 id="modal-title">내역 추가</h2>
+      <p id="modal-description">입력한 내용은 현재 로그인한 개인 계정에만 저장됩니다.</p>
       <label>구분<select name="type"><option value="EXPENSE">지출</option><option value="INCOME">수입</option></select></label>
       <label>내용<input name="merchant" placeholder="예: 월급, 점심 식사" maxLength={120} required /></label>
       <label>금액<input name="amount" type="number" min="1" max="999999999999" placeholder="0" required /></label>
       <label>카테고리<select name="category"><option>식비</option><option>생활</option><option>교통</option><option>쇼핑</option><option>급여</option><option>기타</option></select></label>
+      <label>거래 날짜<input name="transactedAt" type="date" defaultValue={dateInputValue()} required /><small className="field-hint">지난 거래도 실제 날짜로 입력할 수 있어요.</small></label>
       <button className="submit-button" type="submit" disabled={saving}>{saving ? "저장 중…" : "내 가계부에 저장"}</button>
     </form>
   );
