@@ -3,7 +3,6 @@
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  CircleCheck,
   ChevronRight,
   CircleHelp,
   Compass,
@@ -33,6 +32,7 @@ import {
 } from "lucide-react";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OpenBankingGuide } from "@/components/OpenBankingGuide";
+import { SpendingNavigator, type SpendingNavigatorData } from "@/components/SpendingNavigator";
 
 type Auth = {
   authenticated: boolean;
@@ -69,31 +69,6 @@ type Overview = {
   monthly: { month: string; income: number; expense: number }[];
 };
 
-type NavigatorStatus = "ON_TRACK" | "WATCH" | "OVER_BUDGET" | "NEEDS_DATA";
-type ForecastSource = "CURRENT_PACE" | "HISTORICAL_AVERAGE" | "NO_DATA";
-
-type SpendingNavigator = {
-  month: string;
-  income: number;
-  expense: number;
-  budget: number;
-  limitAmount: number;
-  limitLabel: string;
-  remainingBase: number;
-  safeDaily: number;
-  projectedExpense: number;
-  projectedBalance: number;
-  remainingDays: number;
-  elapsedDays: number;
-  pacePercent: number;
-  status: NavigatorStatus;
-  message: string;
-  confidence: "HIGH" | "MEDIUM" | "LOW";
-  historicalMonths: number;
-  forecastSource: ForecastSource;
-  historicalAverageExpense: number;
-};
-
 const emptyOverview: Overview = {
   income: 0,
   expense: 0,
@@ -103,7 +78,7 @@ const emptyOverview: Overview = {
   monthly: [],
 };
 
-const emptyNavigator: SpendingNavigator = {
+const emptyNavigator: SpendingNavigatorData = {
   month: new Date().toISOString().slice(0, 7),
   income: 0,
   expense: 0,
@@ -180,7 +155,7 @@ async function responseMessage(response: Response, fallback: string) {
 export default function HomePage() {
   const [auth, setAuth] = useState<Auth | null>(null);
   const [overview, setOverview] = useState<Overview>(emptyOverview);
-  const [navigator, setNavigator] = useState<SpendingNavigator>(emptyNavigator);
+  const [navigator, setNavigator] = useState<SpendingNavigatorData>(emptyNavigator);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [hasMoreTransactions, setHasMoreTransactions] = useState(false);
   const [transactionPage, setTransactionPage] = useState(0);
@@ -359,21 +334,6 @@ export default function HomePage() {
     ...overview.monthly.flatMap((point) => [point.income, point.expense]),
   );
 
-  const scenarioRemainingBase = Math.max(0, navigator.remainingBase - scenarioAmount);
-  const scenarioDaily = Math.floor(scenarioRemainingBase / Math.max(1, navigator.remainingDays));
-  const scenarioBalance = navigator.projectedBalance - scenarioAmount;
-  const navigatorStatusLabels: Record<NavigatorStatus, string> = {
-    ON_TRACK: "안정권",
-    WATCH: "주의 필요",
-    OVER_BUDGET: "기준 초과",
-    NEEDS_DATA: "기록이 필요해요",
-  };
-  const forecastSourceLabels: Record<ForecastSource, string> = {
-    CURRENT_PACE: "이번 달 지출 속도",
-    HISTORICAL_AVERAGE: "최근 기록 평균",
-    NO_DATA: "기록 대기 중",
-  };
-  const confidenceLabels = { HIGH: "높음", MEDIUM: "보통", LOW: "낮음" };
   const needsSetup = overview.transactionCount === 0 && budget.amount === 0;
 
   function focusTransactions() {
@@ -650,8 +610,8 @@ export default function HomePage() {
             <Menu size={20} />
           </button>
           <div className="welcome">
-            <p>로그인된 개인 가계부</p>
-            <h1>내 돈의 흐름을 한눈에 확인하세요.</h1>
+            <p>내 기록으로 계산한 오늘의 생활비</p>
+            <h1>오늘의 선택부터 확인하세요.</h1>
           </div>
           <div className="top-actions">
             <button className="icon-button" onClick={focusTransactions} aria-label="거래 검색으로 이동" title="거래 검색"><Search size={19} /></button>
@@ -696,7 +656,15 @@ export default function HomePage() {
           </section>
         )}
 
-        <section className="summary-grid" aria-label="개인 자산 요약">
+        <SpendingNavigator
+          data={navigator}
+          scenarioAmount={scenarioAmount}
+          onScenarioChange={setScenarioAmount}
+          onOpenBudget={() => setModal("budget")}
+          onOpenTransaction={() => setModal("add")}
+        />
+
+        <section className={`summary-grid ${banking.enabled ? "with-banking" : ""}`} aria-label="개인 자산 요약">
           <article className="balance-card">
             <div className="card-head"><span>이번 달 남은 돈</span><span>실제 저장 데이터</span></div>
             <strong>{overview.remaining.toLocaleString("ko-KR")}<small>원</small></strong>
@@ -742,80 +710,6 @@ export default function HomePage() {
               <p>{budget.amount > 0 ? `${money(budget.amount)} 중 ${money(overview.expense)} 사용` : "월 지출 목표를 정하고 초과 여부를 확인할 수 있어요."}</p>
             </div>
           </article>
-        </section>
-
-        <section className="navigator-panel" id="navigator" aria-label="생활비 내비게이터">
-          <div className="navigator-main">
-            <div className="panel-head">
-              <div>
-                <span className="eyebrow"><Compass size={12} /> 생활비 내비게이터</span>
-                <h2>오늘 써도 되는 돈</h2>
-              </div>
-              <span className={`navigator-status ${navigator.status.toLowerCase()}`}>
-                {navigator.status === "ON_TRACK" ? <CircleCheck size={13} /> : navigator.status === "NEEDS_DATA" ? <Sparkles size={13} /> : <TriangleAlert size={13} />}
-                {navigatorStatusLabels[navigator.status]}
-              </span>
-            </div>
-            <div className="navigator-value">
-              <strong>{navigator.limitAmount > 0 ? money(navigator.safeDaily) : "계산 준비 중"}</strong>
-              <span>오늘의 안심 사용액</span>
-            </div>
-            <p className="navigator-message">{navigator.message}</p>
-            <div className="navigator-meter" aria-label={`기준액의 ${navigator.pacePercent}% 사용`}>
-              <div><span style={{ width: `${Math.min(100, navigator.pacePercent)}%` }} /></div>
-              <span>{navigator.pacePercent}% 사용</span>
-            </div>
-            <div className="navigator-stats">
-              <div><small>월말 예상 지출</small><b>{money(navigator.projectedExpense)}</b></div>
-              <div><small>{navigator.limitLabel}</small><b>{navigator.limitAmount > 0 ? money(navigator.limitAmount) : "기록 필요"}</b></div>
-              <div><small>남은 기간</small><b>{navigator.remainingDays === 1 ? "오늘" : `D-${navigator.remainingDays}`}</b></div>
-            </div>
-            <div className="navigator-footnote">
-              <span>{forecastSourceLabels[navigator.forecastSource]}</span>
-              <span>예측 신뢰도 {confidenceLabels[navigator.confidence]}</span>
-              <span>참고용 예측 · 금융 조언 아님</span>
-            </div>
-          </div>
-
-          <div className="scenario-box">
-            <div className="scenario-head">
-              <span><Sparkles size={14} /> 가상 지출 실험</span>
-              <small>기록에는 저장되지 않아요</small>
-            </div>
-            <label htmlFor="scenario-amount">이번 주에 추가로 쓸 금액</label>
-            <input
-              id="scenario-amount"
-              className="scenario-range"
-              type="range"
-              min="0"
-              max={Math.max(1_000_000, navigator.limitAmount)}
-              step={10000}
-              value={scenarioAmount}
-              onChange={(event) => setScenarioAmount(Number(event.target.value))}
-            />
-            <div className="scenario-input-row">
-              <b>{money(scenarioAmount)}</b>
-              <input
-                aria-label="가상 지출 금액"
-                type="number"
-                min="0"
-                max="10000000"
-                step="10000"
-                value={scenarioAmount}
-                onChange={(event) => {
-                  const amount = Number(event.target.value);
-                  setScenarioAmount(Number.isFinite(amount) ? Math.min(10_000_000, Math.max(0, amount)) : 0);
-                }}
-              />
-            </div>
-            <div className={`scenario-result ${scenarioBalance < 0 ? "danger" : ""}`}>
-              {navigator.limitAmount > 0
-                ? scenarioAmount > 0
-                  ? <><b>{scenarioBalance >= 0 ? "월말에도 " : "월말에 "}{money(Math.abs(scenarioBalance))}{scenarioBalance >= 0 ? " 정도 남아요" : "가 부족해져요"}</b><span>남은 기간 하루 한도는 {money(scenarioDaily)}로 바뀝니다.</span></>
-                  : <><b>큰 지출을 넣어보고 월말 여유를 확인해 보세요.</b><span>예상치는 저장되지 않는 안전한 실험입니다.</span></>
-                : <><b>예산 또는 수입을 먼저 기록해 주세요.</b><span>기준액이 생기면 바로 시뮬레이션할 수 있어요.</span></>}
-            </div>
-          </div>
         </section>
 
         <section className="content-grid">
@@ -1047,8 +941,8 @@ function LoginGate({ auth }: { auth: Auth }) {
       <section className="login-copy">
         <div className="brand login-brand"><span className="brand-mark"><Leaf size={18} /></span><span>살도</span></div>
         <span className="login-kicker"><ShieldCheck size={14} /> 사용자별 완전 분리 저장</span>
-        <h1>가상 데이터가 아닌,<br />나만의 가계부를 시작하세요.</h1>
-        <p>로그인한 사용자에게만 개인 가계부를 열어드려요. 다른 사용자는 내 거래와 금액을 조회할 수 없습니다.</p>
+        <h1>오늘 얼마까지<br />써도 괜찮을까요?</h1>
+        <p>살도는 내가 기록한 예산과 지출만으로 오늘의 안심 사용액과 월말 여유를 계산합니다. 로그인한 사용자만 자신의 금액과 거래를 볼 수 있어요.</p>
         <div className="social-login-buttons">
           <a className={`real-login-button google-login ${auth.googleEnabled ? "" : "disabled"}`} href={auth.googleEnabled ? "/api/auth/google" : undefined} aria-disabled={!auth.googleEnabled}>
             <span className="social-logo google-logo">G</span> Google로 계속하기 <ChevronRight size={17} />
@@ -1064,10 +958,10 @@ function LoginGate({ auth }: { auth: Auth }) {
       <section className="login-visual" aria-hidden="true">
         <div className="privacy-card">
           <span className="modal-symbol"><ShieldCheck size={22} /></span>
-          <p>내 가계부</p>
-          <strong>로그인 후 공개</strong>
-          <div><span>수입</span><b>••••••원</b></div>
-          <div><span>지출</span><b>••••••원</b></div>
+          <p>오늘의 안심 사용액</p>
+          <strong>로그인 후 계산</strong>
+          <div><span>월말 예상 여유</span><b>••••••원</b></div>
+          <div><span>남은 기간</span><b>••일</b></div>
           <footer><LockKeyhole size={13} /> 본인만 볼 수 있음</footer>
         </div>
       </section>
