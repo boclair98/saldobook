@@ -27,6 +27,16 @@ server {
   listen 80;
   server_name _;
 
+  # Keep malformed/oversized write requests from consuming an API worker.
+  client_max_body_size 1m;
+
+  # JSON responses are frequent and compress well; static assets remain
+  # immutable and are served from the CDN cache below.
+  gzip on;
+  gzip_min_length 1024;
+  gzip_comp_level 5;
+  gzip_types application/json application/problem+json text/plain text/css application/javascript application/xml;
+
   root /usr/share/nginx/html;
   index index.html;
 
