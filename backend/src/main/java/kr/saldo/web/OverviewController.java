@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.YearMonth;
 import java.time.ZoneId;
@@ -28,6 +29,7 @@ public class OverviewController {
   }
 
   @GetMapping
+  @Transactional(readOnly = true)
   public Overview overview(HttpSession session) {
     var user = currentUser.require(session);
     ZoneId seoul = ZoneId.of("Asia/Seoul");

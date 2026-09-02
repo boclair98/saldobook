@@ -2,6 +2,8 @@
 
 살도는 Java 21, Spring Boot, Spring Data JPA, PostgreSQL, TypeScript와 Next.js로 구성된 사용자별 가계부입니다. Google·카카오 OAuth로 로그인하며, 모든 조회·저장·삭제 API는 서버 세션과 데이터 소유자를 함께 확인합니다.
 
+운영 환경은 정적 프런트엔드를 CDN 캐시로 제공하고, API는 PostgreSQL 커넥션 풀·응답 압축·graceful shutdown을 사용합니다. `DB_POOL_MAX`, `SERVER_TOMCAT_THREADS_MAX` 등 환경 변수는 실제 동시 접속과 DB 용량을 측정한 뒤 조정합니다.
+
 ## 현재 제공 기능
 
 - Google·카카오 소셜 로그인과 JDBC 영속 세션

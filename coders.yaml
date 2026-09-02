@@ -42,4 +42,5 @@ services:
 
   db:
     type: postgres
-    size: 1Gi
+    # Headroom for 40k users and long-lived transaction history.
+    size: 10Gi

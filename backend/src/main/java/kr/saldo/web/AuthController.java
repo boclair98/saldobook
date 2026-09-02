@@ -31,6 +31,7 @@ public class AuthController {
   @Value("${GOOGLE_CLIENT_SECRET:}") private String googleClientSecret;
   @Value("${KAKAO_REST_API_KEY:}") private String kakaoRestApiKey;
   @Value("${KAKAO_CLIENT_SECRET:}") private String kakaoClientSecret;
+  @Value("${OPEN_BANKING_ENABLED:false}") private boolean openBankingEnabled;
   @Value("${PUBLIC_URL:https://saldobook.coders.kr}") private String publicUrl;
 
   public AuthController(AppUserRepository users, CurrentUserService currentUser) {
@@ -141,7 +142,8 @@ public class AuthController {
         "name", user.getDisplayName(),
         "userKey", user.getId().toString().substring(0, 8),
         "googleEnabled", googleConfigured(),
-        "kakaoEnabled", kakaoConfigured()
+        "kakaoEnabled", kakaoConfigured(),
+        "openBankingEnabled", openBankingEnabled
       ))
       .orElseGet(() -> providerStatus(false));
   }
@@ -204,7 +206,8 @@ public class AuthController {
     return Map.of(
       "authenticated", authenticated,
       "googleEnabled", googleConfigured(),
-      "kakaoEnabled", kakaoConfigured()
+      "kakaoEnabled", kakaoConfigured(),
+      "openBankingEnabled", openBankingEnabled
     );
   }
 

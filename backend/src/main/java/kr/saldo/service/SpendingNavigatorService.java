@@ -3,6 +3,7 @@ package kr.saldo.service;
 import kr.saldo.repo.MonthlyBudgetRepository;
 import kr.saldo.repo.TransactionRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.YearMonth;
 import java.time.ZoneId;
@@ -25,6 +26,7 @@ public class SpendingNavigatorService {
     this.budgets = budgets;
   }
 
+  @Transactional(readOnly = true)
   public Navigator build(UUID userId) {
     return build(userId, ZonedDateTime.now(KOREA));
   }

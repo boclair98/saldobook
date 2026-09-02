@@ -40,6 +40,7 @@ type Auth = {
   userKey?: string;
   googleEnabled?: boolean;
   kakaoEnabled?: boolean;
+  openBankingEnabled?: boolean;
 };
 
 type Transaction = {
@@ -189,7 +190,7 @@ export default function HomePage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const modalCloseRef = useRef<HTMLButtonElement>(null);
 
-  const loadPrivateData = useCallback(async () => {
+  const loadPrivateData = useCallback(async (openBankingEnabled = false) => {
     setPrivateLoading(true);
     setDataError("");
     try {
@@ -198,7 +199,9 @@ export default function HomePage() {
         fetch("/api/navigator", { credentials: "include", cache: "no-store" }),
         fetch("/api/transactions/page?page=0&size=50", { credentials: "include", cache: "no-store" }),
         fetch("/api/budget", { credentials: "include", cache: "no-store" }),
-        fetch("/api/openbanking/accounts", { credentials: "include", cache: "no-store" }),
+        openBankingEnabled
+          ? fetch("/api/openbanking/accounts", { credentials: "include", cache: "no-store" })
+          : Promise.resolve(null),
       ]);
 
       const coreResults = [overviewResult, navigatorResult, transactionResult, budgetResult];
@@ -215,7 +218,16 @@ export default function HomePage() {
       }
       if (budgetResult.status === "fulfilled") setBudget(await budgetResult.value.json());
 
-      if (bankingResult.status === "fulfilled" && bankingResult.value.ok) {
+      if (!openBankingEnabled) {
+        setBanking((current) => ({
+          ...current,
+          enabled: false,
+          connected: false,
+          fullSyncConfigured: false,
+          accounts: [],
+        }));
+        setBankingError("");
+      } else if (bankingResult.status === "fulfilled" && bankingResult.value?.ok) {
         setBanking(await bankingResult.value.json());
         setBankingError("");
       } else {
@@ -285,7 +297,7 @@ export default function HomePage() {
         }
         if (me.authenticated) {
           try {
-            await loadPrivateData();
+            await loadPrivateData(Boolean(me.openBankingEnabled));
           } catch (error) {
             setToast(error instanceof Error ? error.message : "개인 데이터를 불러오지 못했습니다.");
           }
@@ -342,7 +354,7 @@ export default function HomePage() {
   }
 
   function refreshPrivateData() {
-    void loadPrivateData().catch(() => undefined);
+    void loadPrivateData(Boolean(auth?.openBankingEnabled)).catch(() => undefined);
   }
 
   function showNavigatorInsight() {
@@ -377,7 +389,7 @@ export default function HomePage() {
         }),
       });
       if (!response.ok) throw new Error("저장하지 못했습니다.");
-      await loadPrivateData();
+      await loadPrivateData(Boolean(auth?.openBankingEnabled));
       setModal(null);
       form.reset();
       flash("내 가계부에 안전하게 저장했어요.");
@@ -432,7 +444,7 @@ export default function HomePage() {
         issues: SyncIssue[];
       } = await response.json();
       setSyncIssues(result.issues);
-      await loadPrivateData();
+      await loadPrivateData(Boolean(auth?.openBankingEnabled));
       if (result.issues.length > 0) {
         const first = result.issues[0];
         flash(`${first.accountName}: ${first.message} (${first.code})`);
@@ -459,7 +471,7 @@ export default function HomePage() {
       });
       if (!response.ok) throw new Error(await responseMessage(response, "계좌 연결을 해제하지 못했습니다."));
       setSyncIssues((current) => current.filter((issue) => issue.accountId !== account.id));
-      await loadPrivateData();
+      await loadPrivateData(Boolean(auth?.openBankingEnabled));
       flash("선택한 계좌를 살도에서 제거했습니다.");
     } catch (error) {
       flash(error instanceof Error ? error.message : "계좌 연결을 해제하지 못했습니다.");
@@ -479,7 +491,7 @@ export default function HomePage() {
       });
       if (!response.ok) throw new Error(await responseMessage(response, "전체 연결을 해제하지 못했습니다."));
       setSyncIssues([]);
-      await loadPrivateData();
+      await loadPrivateData(Boolean(auth?.openBankingEnabled));
       setModal(null);
       flash("살도의 오픈뱅킹 연결 정보를 모두 제거했습니다.");
     } catch (error) {
@@ -499,7 +511,7 @@ export default function HomePage() {
         headers: writeHeaders,
       });
       if (!response.ok) throw new Error(await responseMessage(response, "거래를 삭제하지 못했습니다."));
-      await loadPrivateData();
+      await loadPrivateData(Boolean(auth?.openBankingEnabled));
       flash("거래를 삭제했습니다.");
     } catch (error) {
       flash(error instanceof Error ? error.message : "거래를 삭제하지 못했습니다.");
@@ -525,7 +537,7 @@ export default function HomePage() {
       });
       if (!response.ok) throw new Error("예산을 저장하지 못했습니다.");
       setBudget(await response.json());
-      await loadPrivateData();
+      await loadPrivateData(Boolean(auth?.openBankingEnabled));
       setModal(null);
       flash("이번 달 예산을 저장했어요.");
     } catch (error) {
