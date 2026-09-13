@@ -3,6 +3,7 @@
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  CalendarClock,
   ChevronRight,
   CircleHelp,
   Compass,
@@ -68,6 +69,15 @@ type Overview = {
   categories: Record<string, number>;
   transactionCount: number;
   monthly: { month: string; income: number; expense: number }[];
+  recurringCharges: RecurringCharge[];
+};
+
+type RecurringCharge = {
+  id: string;
+  name: string;
+  category: string;
+  amount: number;
+  dayOfMonth: number;
 };
 
 const emptyOverview: Overview = {
@@ -77,6 +87,7 @@ const emptyOverview: Overview = {
   categories: {},
   transactionCount: 0,
   monthly: [],
+  recurringCharges: [],
 };
 
 const emptyNavigator: SpendingNavigatorData = {
@@ -175,7 +186,7 @@ export default function HomePage() {
     },
     accounts: [],
   });
-  const [modal, setModal] = useState<"bank" | "add" | "budget" | "help" | "settings" | null>(null);
+  const [modal, setModal] = useState<"bank" | "add" | "budget" | "recurring" | "help" | "settings" | null>(null);
   const [filter, setFilter] = useState<"all" | "EXPENSE" | "INCOME">("all");
   const [search, setSearch] = useState("");
   const [scenarioAmount, setScenarioAmount] = useState(0);
@@ -348,6 +359,17 @@ export default function HomePage() {
 
   const needsSetup = overview.transactionCount === 0 && budget.amount === 0;
 
+  const recurringCharges = overview.recurringCharges ?? [];
+  const recurringTotal = useMemo(
+    () => recurringCharges.reduce((total, charge) => total + charge.amount, 0),
+    [recurringCharges],
+  );
+  const todayDayOfMonth = Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", day: "numeric" }).format(new Date()));
+  const nextRecurring = useMemo(
+    () => recurringCharges.find((charge) => charge.dayOfMonth >= todayDayOfMonth) ?? recurringCharges[0] ?? null,
+    [recurringCharges, todayDayOfMonth],
+  );
+
   function focusTransactions() {
     document.getElementById("transactions")?.scrollIntoView({ behavior: "smooth", block: "start" });
     window.setTimeout(() => searchInputRef.current?.focus(), 250);
@@ -395,6 +417,54 @@ export default function HomePage() {
       flash("내 가계부에 안전하게 저장했어요.");
     } catch (error) {
       flash(error instanceof Error ? error.message : "저장하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function addRecurringCharge(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    try {
+      const response = await fetch("/api/recurring", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...writeHeaders },
+        body: JSON.stringify({
+          name: String(data.get("name")),
+          category: String(data.get("category")),
+          amount: Number(data.get("amount")),
+          dayOfMonth: Number(data.get("dayOfMonth")),
+        }),
+      });
+      if (!response.ok) throw new Error(await responseMessage(response, "고정비를 저장하지 못했습니다."));
+      await loadPrivateData(Boolean(auth?.openBankingEnabled));
+      setModal(null);
+      form.reset();
+      flash("매달 반복되는 고정비를 저장했어요.");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "고정비를 저장하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteRecurringCharge(charge: RecurringCharge) {
+    if (!window.confirm(`${charge.name} 고정비를 목록에서 제거할까요?\n이미 입력한 거래 내역은 그대로 남습니다.`)) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/recurring/${charge.id}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: writeHeaders,
+      });
+      if (!response.ok) throw new Error(await responseMessage(response, "고정비를 제거하지 못했습니다."));
+      await loadPrivateData(Boolean(auth?.openBankingEnabled));
+      flash("고정비 루틴에서 제거했어요.");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "고정비를 제거하지 못했습니다.");
     } finally {
       setSaving(false);
     }
@@ -595,6 +665,7 @@ export default function HomePage() {
         <nav aria-label="주요 메뉴">
           <a className="nav-item active" href="#dashboard"><LayoutGrid size={18} /> 한눈에 보기</a>
           <a className="nav-item" href="#navigator"><Compass size={18} /> 생활비 내비게이터</a>
+          <a className="nav-item" href="#recurring"><CalendarClock size={18} /> 고정비 루틴</a>
           <a className="nav-item" href="#transactions"><WalletCards size={18} /> 거래 내역</a>
           <a className="nav-item" href="#budget"><Target size={18} /> 이번 달</a>
           {banking.enabled && <a className="nav-item" href="#assets"><Landmark size={18} /> 연결 자산</a>}
@@ -670,6 +741,7 @@ export default function HomePage() {
 
         <SpendingNavigator
           data={navigator}
+          plannedRecurringTotal={recurringTotal}
           scenarioAmount={scenarioAmount}
           onScenarioChange={setScenarioAmount}
           onOpenBudget={() => setModal("budget")}
@@ -722,6 +794,41 @@ export default function HomePage() {
               <p>{budget.amount > 0 ? `${money(budget.amount)} 중 ${money(overview.expense)} 사용` : "월 지출 목표를 정하고 초과 여부를 확인할 수 있어요."}</p>
             </div>
           </article>
+        </section>
+
+        <section className="panel recurring-panel" id="recurring">
+          <div className="panel-head">
+            <div><span className="eyebrow"><CalendarClock size={12} /> 고정비 루틴</span><h2>빠져나갈 돈을 먼저 잡아두세요</h2></div>
+            <button className="text-button" onClick={() => setModal("recurring")}><Plus size={14} /> 추가</button>
+          </div>
+          <p className="recurring-intro">월세·통신비·구독료처럼 매달 반복되는 지출을 등록하면, 결제일을 놓치지 않고 이번 달 계획에 미리 반영할 수 있어요.</p>
+          {recurringCharges.length === 0 ? (
+            <EmptyState
+              title="아직 등록한 고정비가 없어요."
+              description="첫 고정비를 등록하면 매달 빠져나갈 금액을 한눈에 볼 수 있습니다."
+              actionLabel="고정비 등록"
+              onClick={() => setModal("recurring")}
+              icon={<CalendarClock size={20} />}
+            />
+          ) : (
+            <>
+              <div className="recurring-summary">
+                <div><span>이번 달 예정 고정비</span><strong>{money(recurringTotal)}</strong><small>{recurringCharges.length}건 · 직접 등록한 계획</small></div>
+                <div><span>다음 결제 예정</span><strong>{nextRecurring ? `${nextRecurring.dayOfMonth}일` : "-"}</strong><small>{nextRecurring?.name ?? "등록된 고정비 없음"}</small></div>
+              </div>
+              <div className="recurring-list">
+                {recurringCharges.map((charge) => (
+                  <div className="recurring-row" key={charge.id}>
+                    <span className="recurring-day">{charge.dayOfMonth}일</span>
+                    <span className="recurring-name"><b>{charge.name}</b><small>{charge.category} · 매월 반복</small></span>
+                    <strong>−{money(charge.amount)}</strong>
+                    <button className="delete-recurring" aria-label={`${charge.name} 고정비 제거`} onClick={() => deleteRecurringCharge(charge)} disabled={saving}><Trash2 size={14} /></button>
+                  </div>
+                ))}
+              </div>
+              <small className="recurring-note">자동 출금이나 결제는 하지 않습니다. 등록한 계획을 바탕으로 지출을 준비하는 기능입니다.</small>
+            </>
+          )}
         </section>
 
         <section className="content-grid">
@@ -904,6 +1011,8 @@ export default function HomePage() {
                 <small className="disconnect-note">여기서 제거하면 살도 서버의 연결 정보가 삭제됩니다. 금융결제원 자체 동의 철회는 금융결제원 또는 금융기관의 계좌정보통합관리 서비스에서도 할 수 있습니다.</small>
                 {!banking.connected && <OpenBankingGuide />}
               </>
+            ) : modal === "recurring" ? (
+              <RecurringChargeForm onSubmit={addRecurringCharge} saving={saving} />
             ) : modal === "budget" ? (
               <form onSubmit={saveBudget}>
                 <span className="modal-symbol"><PiggyBank size={22} /></span>
@@ -1004,6 +1113,21 @@ function AddTransactionForm({ onSubmit, saving }: { onSubmit: (event: FormEvent<
       <label>카테고리<select name="category"><option>식비</option><option>생활</option><option>교통</option><option>쇼핑</option><option>급여</option><option>기타</option></select></label>
       <label>거래 날짜<input name="transactedAt" type="date" defaultValue={dateInputValue()} required /><small className="field-hint">지난 거래도 실제 날짜로 입력할 수 있어요.</small></label>
       <button className="submit-button" type="submit" disabled={saving}>{saving ? "저장 중…" : "내 가계부에 저장"}</button>
+    </form>
+  );
+}
+
+function RecurringChargeForm({ onSubmit, saving }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean }) {
+  return (
+    <form onSubmit={onSubmit}>
+      <span className="modal-symbol"><CalendarClock size={22} /></span>
+      <h2 id="modal-title">고정비 등록</h2>
+      <p id="modal-description">매달 반복되는 계획만 저장합니다. 실제 결제나 자동 출금은 하지 않아요.</p>
+      <label>이름<input name="name" placeholder="예: 월세, 휴대폰 요금, 음악 구독" maxLength={120} required /></label>
+      <label>금액<input name="amount" type="number" min="1" max="999999999999" placeholder="0" required /></label>
+      <label>카테고리<select name="category"><option>주거</option><option>통신</option><option>구독</option><option>보험</option><option>교육</option><option>기타</option></select></label>
+      <label>결제 예정일<input name="dayOfMonth" type="number" min="1" max="31" placeholder="예: 25" required /><small className="field-hint">31일을 선택하면 짧은 달에는 말일 기준으로 생각하세요.</small></label>
+      <button className="submit-button" type="submit" disabled={saving}>{saving ? "저장 중…" : "고정비 저장"}</button>
     </form>
   );
 }
