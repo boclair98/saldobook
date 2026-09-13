@@ -29,6 +29,7 @@ export type SpendingNavigatorData = {
 
 type SpendingNavigatorProps = {
   data: SpendingNavigatorData;
+  plannedRecurringTotal?: number;
   scenarioAmount: number;
   onScenarioChange: (amount: number) => void;
   onOpenBudget: () => void;
@@ -52,7 +53,7 @@ const confidenceLabels = { HIGH: "높음", MEDIUM: "보통", LOW: "낮음" };
 const presetAmounts = [50000, 100000, 300000];
 const money = (value: number) => `${value.toLocaleString("ko-KR")}원`;
 
-export function SpendingNavigator({ data, scenarioAmount, onScenarioChange, onOpenBudget, onOpenTransaction }: SpendingNavigatorProps) {
+export function SpendingNavigator({ data, plannedRecurringTotal = 0, scenarioAmount, onScenarioChange, onOpenBudget, onOpenTransaction }: SpendingNavigatorProps) {
   const scenarioRemainingBase = Math.max(0, data.remainingBase - scenarioAmount);
   const scenarioDaily = Math.floor(scenarioRemainingBase / Math.max(1, data.remainingDays));
   const scenarioBalance = data.projectedBalance - scenarioAmount;
@@ -103,6 +104,13 @@ export function SpendingNavigator({ data, scenarioAmount, onScenarioChange, onOp
             <div><small>월말 예상 지출</small><b>{money(data.projectedExpense)}</b></div>
             <div><small>월말 예상 여유</small><b className={data.projectedBalance < 0 ? "negative" : ""}>{data.limitAmount > 0 ? `${data.projectedBalance < 0 ? "−" : ""}${money(Math.abs(data.projectedBalance))}` : "계산 대기"}</b></div>
           </div>
+          {plannedRecurringTotal > 0 && (
+            <div className="navigator-commitment">
+              <span>고정비 예정</span>
+              <b>{money(plannedRecurringTotal)}</b>
+              <small>고정비 루틴에 저장한 월 계획 · 오늘 한도와 분리해 표시</small>
+            </div>
+          )}
           <details className="navigator-formula">
             <summary>이 금액은 어떻게 계산했나요?</summary>
             <p>{data.limitLabel} {data.limitAmount > 0 ? money(data.limitAmount) : "미설정"}에서 이번 달 지출 {money(data.expense)}을 빼고 남은 기간으로 나눴어요.</p>

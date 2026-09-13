@@ -1,10 +1,10 @@
 package kr.saldo.web;
 
 import kr.saldo.repo.TransactionRepository;
+import kr.saldo.repo.RecurringChargeRepository;
 import kr.saldo.service.CurrentUserService;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,15 +16,18 @@ import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/overview")
 public class OverviewController {
   private final TransactionRepository transactions;
+  private final RecurringChargeRepository recurringCharges;
   private final CurrentUserService currentUser;
 
-  public OverviewController(TransactionRepository transactions, CurrentUserService currentUser) {
+  public OverviewController(TransactionRepository transactions, RecurringChargeRepository recurringCharges, CurrentUserService currentUser) {
     this.transactions = transactions;
+    this.recurringCharges = recurringCharges;
     this.currentUser = currentUser;
   }
 
@@ -58,7 +61,10 @@ public class OverviewController {
       });
     List<MonthlyPoint> monthly = new ArrayList<>();
     monthlyTotals.forEach((month, totals) -> monthly.add(new MonthlyPoint(month.toString(), totals[0], totals[1])));
-    return new Overview(income, expense, income - expense, categories, (int) Math.min(Integer.MAX_VALUE, transactions.countByUserId(user.getId())), monthly);
+    List<RecurringChargeView> recurring = recurringCharges.findByUserIdAndActiveTrueOrderByDayOfMonthAsc(user.getId()).stream()
+      .map(value -> new RecurringChargeView(value.getId(), value.getName(), value.getCategory(), value.getAmount(), value.getDayOfMonth()))
+      .toList();
+    return new Overview(income, expense, income - expense, categories, (int) Math.min(Integer.MAX_VALUE, transactions.countByUserId(user.getId())), monthly, recurring);
   }
 
   public record Overview(
@@ -67,8 +73,10 @@ public class OverviewController {
     long remaining,
     Map<String, Long> categories,
     int transactionCount,
-    List<MonthlyPoint> monthly
+    List<MonthlyPoint> monthly,
+    List<RecurringChargeView> recurringCharges
   ) {}
 
   public record MonthlyPoint(String month, long income, long expense) {}
+  public record RecurringChargeView(UUID id, String name, String category, long amount, int dayOfMonth) {}
 }
